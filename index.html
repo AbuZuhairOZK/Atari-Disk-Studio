@@ -126,6 +126,13 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
 .pv details summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px 0}
 .pv details[open] summary{margin-bottom:8px}
 .pvact{display:flex;justify-content:flex-end}
+.pvtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pvtop .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:none;padding:6px 12px;cursor:pointer;color:var(--muted);font-weight:500}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-checked="true"]{background:var(--accent);color:var(--accent-ink)}
+.screen.wrap{white-space:pre-wrap;word-break:break-word;max-height:560px}
 .opts{display:grid;gap:8px}
 .opt{display:grid;gap:2px;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);cursor:pointer}
 .opt:hover,.opt:focus-visible{border-color:var(--accent)}
@@ -171,7 +178,7 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
     <div class="ph">
       <h2 id="hFiles">Directory <span class="mono" id="fileCount" style="letter-spacing:0;text-transform:none"></span></h2>
       <div class="tools">
-        <label class="check"><input type="checkbox" id="textConv" checked> Convert line endings for .TXT .LST .ASM</label>
+        <label class="check"><input type="checkbox" id="textConv" checked> Convert line endings for text files</label>
         <button class="btn primary" id="btnAdd" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Add files</button>
       </div>
     </div>
@@ -630,40 +637,63 @@ function readout(s){
   $('#readout').textContent = `Sector ${s} · ${t}`;
 }
 
+/* View-as preferences: per file this session, per extension remembered on this device */
+let extPrefs = {}; try { extPrefs = JSON.parse(localStorage.getItem('atrds.view') || '{}'); } catch {}
+const fileMode = {};
+function savePrefs(){ try { localStorage.setItem('atrds.view', JSON.stringify(extPrefs)); } catch {} }
+const MODES = [['auto','Auto'],['text','Text'],['basic','BASIC'],['hex','Hex']];
+function modeFor(f){ return fileMode[f.name + '.' + f.ext] || extPrefs[f.ext] || 'auto'; }
+
 function renderPreview(){
   const pv = $('#pv'); const f = st.files.find(x => x.i === st.sel);
   if (!f){ $('#pvName').textContent = '—'; pv.innerHTML = `<div class="kind" style="color:var(--muted)">Tap a file to see what's inside.</div>`; return; }
   $('#pvName').textContent = `${f.name}.${f.ext}`;
-  const info = describe(f.bytes); let head = '', body = '';
-  if (info.type === 'bin'){
+  const info = describe(f.bytes); const mode = modeFor(f);
+  let shown = mode === 'auto' ? (info.type === 'data' ? 'hex' : info.type) : mode;
+  let head = '', body = '';
+  if (shown === 'bin'){
     head = `<b>Binary load file</b> · ${info.segs.length} segment${info.segs.length === 1 ? '' : 's'}` + (info.run != null ? ` · runs at <b>${hex(info.run, 4)}</b>` : '') + (info.init != null ? ` · init <b>${hex(info.init, 4)}</b>` : '');
     body = `<pre class="screen">${info.segs.map(([a, b]) => `${hex(a, 4)}–${hex(b, 4)}  ${String(b - a + 1).padStart(5)} bytes`).join('\n')}</pre>` + hexDump(f.bytes);
-  } else if (info.type === 'basic'){
-    if (info.lines){
-      head = `<b>${info.turbo ? 'Turbo-BASIC XL' : 'Atari BASIC'} program</b> · ${info.lines.length} lines`;
-      body = `<pre class="screen listing">${info.lines.map(l => l.bytes.map(atChar).join('')).join('\n')}</pre>`;
-    } else { head = `<b>Tokenized BASIC program</b> · the listing couldn't be read (it may be protected)`; body = hexDump(f.bytes); }
-  } else if (info.type === 'text'){
-    head = `<b>ATASCII text</b> · ${f.bytes.filter(c => c === 0x9B).length} lines`; body = textView(f.bytes);
-  } else { head = `<b>Data file</b>`; body = hexDump(f.bytes); }
+  } else if (shown === 'basic'){
+    let l = info.lines; if (!l && info.type !== 'basic'){ try { l = detokenize(f.bytes).lines; } catch {} }
+    if (l && l.length){
+      head = `<b>${info.type !== 'basic' ? 'BASIC' : info.turbo ? 'Turbo-BASIC XL' : 'Atari BASIC'} listing</b> · ${l.length} lines`;
+      body = `<pre class="screen listing">${l.map(x => x.bytes.map(atChar).join('')).join('\n')}</pre>`;
+    } else { head = `<b>Not a readable BASIC program</b>`; body = hexDump(f.bytes); }
+  } else if (shown === 'text'){
+    const eols = f.bytes.filter(c => c === 0x9B).length;
+    head = `<b>Text</b> · ${eols} line${eols === 1 ? '' : 's'} · ${wordCount(f.bytes).toLocaleString()} words`;
+    body = textView(f.bytes);
+  } else { head = `<b>${info.type === 'data' ? 'Data file' : 'Raw bytes'}</b>`; body = hexDump(f.bytes, 4096); }
   const warn = f.warn ? `<div class="kind" style="color:var(--danger)">${esc(f.warn)}. DOS may report an error reading this file.</div>` : '';
-  const raw = info.type === 'data' || (info.type === 'basic' && !info.lines) ? '' : `<details><summary>Raw bytes</summary>${hexDump(f.bytes)}</details>`;
-  pv.innerHTML = `<div class="kind">${head} · ${f.size.toLocaleString()} bytes</div>${warn}${body}${raw}
+  const seg = `<div class="seg" role="radiogroup" aria-label="View as">${MODES.map(([k, l]) => `<button type="button" role="radio" aria-checked="${k === mode}" data-m="${k}">${l}</button>`).join('')}</div>`;
+  const remember = mode !== 'auto' && f.ext ? `<label class="check"><input type="checkbox" id="pvRemember" ${extPrefs[f.ext] === mode ? 'checked' : ''}> Always view .${esc(f.ext)} files as ${MODES.find(m => m[0] === mode)[1]}</label>` : '';
+  pv.innerHTML = `<div class="pvtop"><span class="k">View as</span>${seg}</div>${remember}
+    <div class="kind">${head} · ${f.size.toLocaleString()} bytes</div>${warn}${body}
     <div class="pvact"><button class="btn primary" type="button" id="pvExport">${ICON.out}Copy to device…</button></div>`;
+  pv.querySelector('.seg').onclick = e => {
+    const b = e.target.closest('[data-m]'); if (!b) return; const m = b.dataset.m;
+    fileMode[f.name + '.' + f.ext] = m;
+    if (m === 'auto' && extPrefs[f.ext]){ delete extPrefs[f.ext]; savePrefs(); }
+    else if (extPrefs[f.ext] && extPrefs[f.ext] !== m){ extPrefs[f.ext] = m; savePrefs(); }
+    renderPreview();
+  };
+  const rb = $('#pvRemember'); if (rb) rb.onchange = () => { if (rb.checked) extPrefs[f.ext] = mode; else delete extPrefs[f.ext]; savePrefs(); toast(rb.checked ? `.${f.ext} files will open as ${mode === 'basic' ? 'BASIC' : mode} on this device` : `.${f.ext} files back to automatic`); };
   $('#pvExport').onclick = () => exportMenu(f);
 }
+function wordCount(b){ let n = 0, inw = false; for (const c of b){ const sp = c === 0x20 || c === 0x9B || c === 0x7F; if (!sp && !inw) n++; inw = !sp; } return n; }
 function atChar(c){
   const inv = c >= 128 && c !== 0x9B; const b = c & 0x7f;
   const ch = esc(atasciiGlyph(c));
   return inv ? `<span class="inv">${ch}</span>` : ch;
 }
 function textView(b){
-  const lim = b.subarray(0, 8192); let out = '';
+  const max = 65536, lim = b.subarray(0, max); let out = '';
   for (const c of lim) out += c === 0x9B ? '\n' : c === 0x7F ? '    ' : atChar(c);
-  return `<pre class="screen">${out}${b.length > 8192 ? '\n…' : ''}</pre>`;
+  return `<pre class="screen wrap">${out}${b.length > max ? '\n…' : ''}</pre>`;
 }
-function hexDump(b){
-  const lim = Math.min(b.length, 1024); let out = '';
+function hexDump(b, max = 1024){
+  const lim = Math.min(b.length, max); let out = '';
   for (let r = 0; r < lim; r += 8){
     const row = b.subarray(r, Math.min(r + 8, lim));
     out += `<span class="addr">${r.toString(16).toUpperCase().padStart(4, '0')}</span>  ` +
@@ -673,7 +703,7 @@ function hexDump(b){
 }
 
 /* ---------- Actions ---------- */
-function isTextExt(ext){ return $('#textConv').checked && ATARI_TEXT_EXT.includes(ext); }
+function isTextExt(ext){ return $('#textConv').checked && (ATARI_TEXT_EXT.includes(ext) || extPrefs[ext] === 'text'); }
 
 function exportOptions(f){
   const info = describe(f.bytes), base = f.name, orig = f.ext ? `${f.name}.${f.ext}` : f.name;
@@ -684,10 +714,12 @@ function exportOptions(f){
     opts.push({ label:'Program listing (.txt)', note:'Readable text you can open in Notes, Pages or any editor', name:`${base}.txt`, data:() => enc(txt), type:'text/plain' });
     opts.push({ label:'Atari listing (.LST)', note:'ATASCII text the Atari can load back with ENTER "D:…"', name:`${base}.LST`, data:() => { const out = []; info.lines.forEach(l => { out.push(...l.bytes, 0x9B); }); return new Uint8Array(out); } });
   }
-  if (info.type === 'text') opts.push({ label:'Plain text (.txt)', note:'Line endings and Atari graphics characters converted', name:`${base}.txt`, data:() => enc(atasciiToText(f.bytes)), type:'text/plain' });
+  const textOpt = { label:'Plain text (.txt)', note:'Read as ATASCII text: line endings and Atari graphics characters converted', name:`${base}.txt`, data:() => enc(atasciiToText(f.bytes)), type:'text/plain' };
+  if (info.type === 'text' || modeFor(f) === 'text') opts.unshift(textOpt);
   if (info.type === 'bin'){
     opts.push({ label:'Executable (.XEX)', note:'Runs in Altirra and on SDrive-MAX', name:`${base}.XEX`, data:() => f.bytes });
   }
+  if (!opts.includes(textOpt)) opts.push(textOpt);
   opts.push({ label:'Hex dump (.txt)', note:'Every byte with its ATASCII character', name:`${base}-hex.txt`, data:() => enc(hexText(f.bytes)), type:'text/plain' });
   opts.push({ label:'Original file', note:'Exact bytes as stored on the disk', name: orig, data:() => f.bytes });
   return opts;
