@@ -162,7 +162,7 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
       <h2 id="hFiles">Directory <span class="mono" id="fileCount" style="letter-spacing:0;text-transform:none"></span></h2>
       <div class="tools">
         <label class="check"><input type="checkbox" id="textConv" checked> Convert line endings for .TXT .LST .ASM</label>
-        <button class="btn primary" id="btnAdd" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Add from Mac</button>
+        <button class="btn primary" id="btnAdd" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Add files</button>
       </div>
     </div>
     <div class="tablewrap">
@@ -171,7 +171,7 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <div class="empty" id="emptyMsg" hidden>This disk has no files yet. Add some from your Mac.</div>
+    <div class="empty" id="emptyMsg" hidden>This disk has no files yet. Tap Add files to copy some onto it.</div>
     <div class="drop">Drop files here to copy them onto the disk, or drop an .ATR to open it.</div>
   </section>
 
@@ -210,7 +210,7 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
   </aside>
 </main>
 
-<input type="file" id="fileAtr" accept=".atr,.ATR" hidden>
+<input type="file" id="fileAtr" hidden>
 <input type="file" id="fileAdd" multiple hidden>
 
 <script>
@@ -481,7 +481,7 @@ function renderRows(){
       <td class="n mono">${f.count}</td><td class="n mono">${f.size.toLocaleString()}</td><td class="n mono">${f.start}</td>
       <td>${tags}</td>
       <td class="n"><div class="rowact">
-        <button class="ib" data-a="out" title="Copy to Mac" aria-label="Copy ${esc(f.name)} to Mac">${ICON.out}</button>
+        <button class="ib" data-a="out" title="Copy to device" aria-label="Copy ${esc(f.name)} to this device">${ICON.out}</button>
         <button class="ib" data-a="ren" title="Rename" aria-label="Rename" ${f.locked ? 'disabled' : ''}>${ICON.ren}</button>
         <button class="ib ${f.locked ? 'on' : ''}" data-a="lock" title="${f.locked ? 'Unlock' : 'Lock'}" aria-label="${f.locked ? 'Unlock' : 'Lock'}">${f.locked ? ICON.lock : ICON.unlock}</button>
         <button class="ib del" data-a="del" title="${f.locked ? 'Unlock to delete' : 'Delete'}" aria-label="Delete" ${f.locked ? 'disabled' : ''}>${ICON.del}</button>
@@ -575,9 +575,10 @@ function exportFile(f){
 
 async function addFiles(list){
   if (!st.disk) return;
+  if (list.length === 1 && /\.atr$/i.test(list[0].name)) return guard(() => openAtr(list[0]));
   let added = 0; const problems = [];
   for (const file of list){
-    if (/\.atr$/i.test(file.name)) { problems.push(`${file.name}: drop disk images on their own to open them`); continue; }
+    if (/\.atr$/i.test(file.name)) { problems.push(`${file.name} is a disk image. Use Open .ATR to open it`); continue; }
     const raw = new Uint8Array(await file.arrayBuffer());
     const n = uniqueName(toAtariName(file.name), st.disk.readDir());
     const bytes = isTextExt(n.ext) ? toAtascii(raw) : raw;
