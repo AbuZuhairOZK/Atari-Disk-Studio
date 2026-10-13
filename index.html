@@ -55,7 +55,7 @@ button,input{font:inherit;color:inherit}
 
 /* Main layout */
 main{max-width:1280px;margin:0 auto;padding-block:20px 40px;padding-inline:16px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:20px;align-items:start}
-@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)} .side{display:contents} .pvpanel{order:2} .side>.panel:not(.pvpanel){order:3} .banner{order:0} main>.panel{order:1}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
 .panel h2{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0;color:var(--muted)}
 .ph{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
@@ -122,10 +122,20 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
 .screen{background:var(--screen);color:var(--screen-ink);font-family:var(--mono);font-size:12px;line-height:1.45;padding:12px;border-radius:6px;overflow:auto;max-height:340px;white-space:pre;margin:0}
 .screen .inv{background:var(--screen-ink);color:var(--screen)}
 .screen .addr{opacity:.55}
+.screen.listing{max-height:520px;font-size:12.5px}
+.pv details summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px 0}
+.pv details[open] summary{margin-bottom:8px}
+.pvact{display:flex;justify-content:flex-end}
+.opts{display:grid;gap:8px}
+.opt{display:grid;gap:2px;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);cursor:pointer}
+.opt:hover,.opt:focus-visible{border-color:var(--accent)}
+.opt span{color:var(--muted);font-size:12.5px}
+.opt code{font-family:var(--mono);font-size:12px;color:var(--accent)}
+.pvpanel{scroll-margin-top:130px}
 
 /* Modal + toast */
 .scrim{position:fixed;inset:0;background:rgba(10,14,25,.5);display:grid;place-items:center;padding:16px;z-index:20}
-.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(440px,100%);padding:20px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(460px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:20px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .modal h3{margin:0;font-family:var(--display);font-size:20px}
 .modal p{margin:0;color:var(--muted)}
 .modal .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
@@ -203,9 +213,9 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
       </div>
     </section>
 
-    <section class="panel" aria-labelledby="hPv">
+    <section class="panel pvpanel" id="pvPanel" aria-labelledby="hPv">
       <div class="ph"><h2 id="hPv">Preview</h2><span class="tag mono" id="pvName">—</span></div>
-      <div class="pv" id="pv"><div class="kind" style="color:var(--muted)">Select a file to see what's inside.</div></div>
+      <div class="pv" id="pv"><div class="kind" style="color:var(--muted)">Tap a file to see what's inside.</div></div>
     </section>
   </aside>
 </main>
@@ -408,10 +418,101 @@ function describe(b){
     }
     return { type:'bin', segs, run, init };
   }
-  if (b.length > 14 && b[0] === 0 && b[1] === 0) return { type:'basic' };
+  if (b.length > 14 && b[0] === 0 && b[1] === 0){
+    try { const l = detokenize(b); if (l.lines.length) return { type:'basic', ...l }; } catch {}
+    return { type:'basic', lines: null };
+  }
   let printable = 0; for (const c of b.subarray(0, 2048)) if ((c >= 32 && c < 127) || c === 0x9B || c === 0x7F) printable++;
   if (b.length && printable / Math.min(b.length, 2048) > 0.9) return { type:'text' };
   return { type:'data' };
+}
+/* ---- ATASCII -> Unicode (inverse video is bit 7; shown as the same glyph in plain text) ---- */
+const ATASCII_LOW = '♥┣┃┛┫┓╱╲◢▗◣▝▘▔▁▖♣┏━╋●▄▎┳┻▌┗␛↑↓←→';
+function atasciiGlyph(c){
+  const b = c & 0x7f;
+  if (b < 32) return ATASCII_LOW[b];
+  if (b === 0x60) return '◆'; if (b === 0x7B) return '♠'; if (b === 0x7D) return '↰';
+  if (b === 0x7E) return '◀'; if (b === 0x7F) return '▶';
+  return String.fromCharCode(b);
+}
+function atasciiToText(bytes){ let s = ''; for (const c of bytes) s += c === 0x9B ? '\n' : atasciiGlyph(c); return s; }
+
+/* ---- Atari BASIC / Turbo-BASIC XL detokenizer (LIST) ----
+   Token tables follow dmsc/tbxl-parser (peg/statements.txt, peg/tokens.txt). */
+const BAS_STMT = ['REM','DATA','INPUT','COLOR','LIST','ENTER','LET','IF','FOR','NEXT','GOTO','GO TO','GOSUB','TRAP','BYE','CONT','COM','CLOSE','CLR','DEG','DIM','END','NEW','OPEN','LOAD','SAVE','STATUS','NOTE','POINT','XIO','ON','POKE','PRINT','RAD','READ','RESTORE','RETURN','RUN','STOP','POP','?','GET','PUT','GRAPHICS','PLOT','POSITION','DOS','DRAWTO','SETCOLOR','LOCATE','SOUND','LPRINT','CSAVE','CLOAD','','ERROR -',
+  'DPOKE','MOVE','-MOVE','*F','REPEAT','UNTIL','WHILE','WEND','ELSE','ENDIF','BPUT','BGET','FILLTO','DO','LOOP','EXIT','DIR','LOCK','UNLOCK','RENAME','DELETE','PAUSE','TIME$=','PROC','EXEC','ENDPROC','FCOLOR','*L','--','RENUM','DEL','DUMP','TRACE','TEXT','BLOAD','BRUN','GO#','#','*B','PAINT','CLS','DSOUND','CIRCLE','%PUT','%GET'];
+const BAS_OP = ['','',',','',':',';','',' GOTO ',' GOSUB ',' TO ',' STEP ',' THEN ','#','<=','<>','>=','<','>','=','^','*','+','-','/','NOT ',' OR ',' AND ','(',')','=','=','<=','<>','>=','<','>','=','+','-','(','','','(','(',',',
+  'STR$','CHR$','USR','ASC','VAL','LEN','ADR','ATN','COS','PEEK','SIN','RND','FRE','EXP','LOG','CLOG','SQR','SGN','ABS','INT','PADDLE','STICK','PTRIG','STRIG',
+  'DPEEK','&','!','INSTR','INKEY$',' EXOR ','HEX$','DEC',' DIV ','FRAC','TIME$','TIME',' MOD ',' EXEC ','RND','RAND','TRUNC','%0','%1','%2','%3',' GO# ','UINSTR','ERR','ERL']; // index = token - 0x10
+function bcdToString(b, o, hex){
+  const e = b[o]; if ((e & 0x7f) === 0) return hex ? '$0' : '0';
+  let dig = ''; for (let i = 1; i <= 5; i++) dig += (b[o+i] >> 4).toString() + (b[o+i] & 15).toString();
+  let exp = (e & 0x7f) * 2 - 136; // value = int(dig) * 10^exp
+  if (hex){ let v = 0; for (const c of dig) v = v * 10 + +c; v *= Math.pow(10, exp); return '$' + Math.round(v).toString(16).toUpperCase(); }
+  dig = dig.replace(/^0+/, ''); while (dig.endsWith('0')){ dig = dig.slice(0, -1); exp++; }
+  const neg = e & 0x80 ? '-' : ''; const point = dig.length + exp; // digits before the decimal point
+  let s;
+  if (point > 10 || point < -1){ // scientific, as Atari prints it
+    const m = dig.length > 1 ? dig[0] + '.' + dig.slice(1) : dig; const x = point - 1;
+    s = m + 'E' + (x < 0 ? '-' : '+') + String(Math.abs(x)).padStart(2, '0');
+  } else if (exp >= 0) s = dig + '0'.repeat(exp);
+  else if (point > 0) s = dig.slice(0, point) + '.' + dig.slice(point);
+  else s = '0.' + '0'.repeat(-point) + dig;
+  return neg + s;
+}
+function detokenize(b){
+  const w = i => b[i] | (b[i+1] << 8);
+  const vntp = w(2), vntd = w(4), stmtab = w(8), stmcur = w(10);
+  const at = a => a - vntp + 14;
+  if (vntp === 0 || at(stmtab) >= b.length || at(stmtab) < 14) throw new Error('bad header');
+  // variable names
+  const names = []; let cur = [];
+  for (let i = 14; i < Math.min(at(vntd) + 1, at(stmtab)) && i < b.length; i++){
+    const c = b[i]; if (c === 0 && !cur.length) break;
+    cur.push(c & 0x7f); if (c & 0x80){ names.push(String.fromCharCode(...cur)); cur = []; }
+  }
+  const varName = n => { const nm = names[n]; return nm && /^[A-Za-z][A-Za-z0-9_]*[$(]?$/.test(nm) ? nm : `V${n}`; };
+  const lines = []; let turbo = false; let off = at(stmtab); const end = Math.min(b.length, at(stmcur) + 256);
+  const push = (arr, s) => { for (let i = 0; i < s.length; i++) arr.push(s.charCodeAt(i)); };
+  while (off + 3 <= end){
+    const num = w(off), len = b[off+2];
+    if (num >= 32768 || len < 4 || off + len > b.length) break;
+    const out = []; push(out, num + ' ');
+    let s = off + 3, first = true;
+    while (s < off + len){
+      const next = off + b[s], tok = b[s+1];
+      if (next <= s + 1 || next > off + len) break;
+      if (tok > 0x37) turbo = true;
+      const kw = BAS_STMT[tok] ?? `[STMT ${tok}]`;
+      const prevThen = out.length >= 6 && String.fromCharCode(...out.slice(-6)) === ' THEN ';
+      if (!first && !prevThen) out.push(0x3A);
+      first = false;
+      if (tok === 0 || tok === 1 || tok === 0x37){ // REM, DATA, ERROR - : raw text
+        push(out, kw + ' '); let e = next; if (b[e-1] === 0x9B) e--; if (tok === 0x37 && b[e-1] === 0x14) e--;
+        for (let i = s + 2; i < e; i++) out.push(b[i]);
+      } else if (tok === 0x54){ push(out, '-'.repeat(30)); }
+      else {
+        if (kw) push(out, kw + ' ');
+        let i = s + 2;
+        while (i < next){
+          const t = b[i++];
+          if (t === 0x0E || t === 0x0D){ push(out, bcdToString(b, i, t === 0x0D)); i += 6; if (t === 0x0D) turbo = true; }
+          else if (t === 0x0F){ const n = b[i++]; out.push(0x22); for (let k = 0; k < n; k++) out.push(b[i+k]); out.push(0x22); i += n; }
+          else if (t >= 0x80) push(out, varName(t & 0x7f));
+          else if (t === 0x00){ push(out, varName((b[i++] ^ 0x80))); turbo = true; }
+          else if (t === 0x14 || t === 0x16) break;
+          else if (t >= 0x10){ const op = BAS_OP[t - 0x10]; if (op === undefined) push(out, `[${t}]`); else push(out, op); if (t >= 0x55) turbo = true; }
+          else push(out, `[${t}]`);
+        }
+        while (out[out.length-1] === 0x20 && !(String.fromCharCode(...out.slice(-6)) === ' THEN ')) out.pop();
+      }
+      s = next;
+    }
+    while (out[out.length-1] === 0x20) out.pop();
+    lines.push({ num, bytes: out });
+    off += len;
+  }
+  return { lines, turbo, vars: names.length };
 }
 // ===== CORE END =====
 
@@ -434,16 +535,17 @@ const ICON = {
 
 function toast(msg){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), 3200); }
 
-function modal({ title, text, html = '', ok = 'OK', danger = false, cancel = 'Cancel', onOk }){
+function modal({ title, text, html = '', ok = 'OK', danger = false, cancel = 'Cancel', onOk, onOpen }){
   const sc = document.createElement('div'); sc.className = 'scrim';
-  sc.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h3>${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}${html}<div class="err" id="mErr"></div><div class="row">${cancel ? `<button class="btn" data-x type="button">${esc(cancel)}</button>` : ''}<button class="btn ${danger ? 'danger' : 'primary'}" data-ok type="button">${esc(ok)}</button></div></div>`;
+  sc.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h3>${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}${html}<div class="err" id="mErr"></div><div class="row">${cancel ? `<button class="btn" data-x type="button">${esc(cancel)}</button>` : ''}${ok ? `<button class="btn ${danger ? 'danger' : 'primary'}" data-ok type="button">${esc(ok)}</button>` : ''}</div></div>`;
   const close = () => { sc.remove(); document.removeEventListener('keydown', key); };
   const go = () => { if (!onOk) return close(); const r = onOk(sc); if (r !== false) close(); };
-  const key = e => { if (e.key === 'Escape') close(); if (e.key === 'Enter') go(); };
+  const key = e => { if (e.key === 'Escape') close(); if (e.key === 'Enter' && ok) go(); };
   sc.addEventListener('click', e => { if (e.target === sc || e.target.closest('[data-x]')) close(); if (e.target.closest('[data-ok]')) go(); });
   document.addEventListener('keydown', key);
   document.body.append(sc);
-  (sc.querySelector('input') || sc.querySelector('[data-ok]')).focus();
+  if (onOpen) onOpen(sc);
+  (sc.querySelector('input') || sc.querySelector('[data-ok]') || sc.querySelector('button'))?.focus();
 }
 
 function download(bytes, name, type = 'application/octet-stream'){
@@ -457,7 +559,7 @@ function setDirty(v){ st.dirty = v; $('#dirtyDot').hidden = !v; $('#btnSave').cl
 function load(disk, fname, sample = false){
   st.disk = disk; st.fname = fname; st.sample = sample; st.sel = null; setDirty(false);
   const bn = $('#banner');
-  if (sample){ bn.hidden = false; bn.innerHTML = `<b>SAMPLE DISK</b><span>These three files are examples so you can try things out. Open one of your own .ATR images to begin.</span>`; }
+  if (sample){ bn.hidden = false; bn.innerHTML = `<b>SAMPLE DISK</b><span>These files are examples so you can try things out. Open one of your own .ATR images to begin.</span>`; }
   else bn.hidden = true;
   refresh();
 }
@@ -530,23 +632,29 @@ function readout(s){
 
 function renderPreview(){
   const pv = $('#pv'); const f = st.files.find(x => x.i === st.sel);
-  if (!f){ $('#pvName').textContent = '—'; pv.innerHTML = `<div class="kind" style="color:var(--muted)">Select a file to see what's inside.</div>`; return; }
+  if (!f){ $('#pvName').textContent = '—'; pv.innerHTML = `<div class="kind" style="color:var(--muted)">Tap a file to see what's inside.</div>`; return; }
   $('#pvName').textContent = `${f.name}.${f.ext}`;
   const info = describe(f.bytes); let head = '', body = '';
   if (info.type === 'bin'){
     head = `<b>Binary load file</b> · ${info.segs.length} segment${info.segs.length === 1 ? '' : 's'}` + (info.run != null ? ` · runs at <b>${hex(info.run, 4)}</b>` : '') + (info.init != null ? ` · init <b>${hex(info.init, 4)}</b>` : '');
     body = `<pre class="screen">${info.segs.map(([a, b]) => `${hex(a, 4)}–${hex(b, 4)}  ${String(b - a + 1).padStart(5)} bytes`).join('\n')}</pre>` + hexDump(f.bytes);
   } else if (info.type === 'basic'){
-    head = `<b>Tokenized BASIC program</b> · SAVEd from Atari BASIC or Turbo-BASIC XL`; body = hexDump(f.bytes);
+    if (info.lines){
+      head = `<b>${info.turbo ? 'Turbo-BASIC XL' : 'Atari BASIC'} program</b> · ${info.lines.length} lines`;
+      body = `<pre class="screen listing">${info.lines.map(l => l.bytes.map(atChar).join('')).join('\n')}</pre>`;
+    } else { head = `<b>Tokenized BASIC program</b> · the listing couldn't be read (it may be protected)`; body = hexDump(f.bytes); }
   } else if (info.type === 'text'){
     head = `<b>ATASCII text</b> · ${f.bytes.filter(c => c === 0x9B).length} lines`; body = textView(f.bytes);
   } else { head = `<b>Data file</b>`; body = hexDump(f.bytes); }
   const warn = f.warn ? `<div class="kind" style="color:var(--danger)">${esc(f.warn)}. DOS may report an error reading this file.</div>` : '';
-  pv.innerHTML = `<div class="kind">${head} · ${f.size.toLocaleString()} bytes in sectors ${f.secs[0] ?? '—'}…${f.secs[f.secs.length - 1] ?? ''}</div>${warn}${body}`;
+  const raw = info.type === 'data' || (info.type === 'basic' && !info.lines) ? '' : `<details><summary>Raw bytes</summary>${hexDump(f.bytes)}</details>`;
+  pv.innerHTML = `<div class="kind">${head} · ${f.size.toLocaleString()} bytes</div>${warn}${body}${raw}
+    <div class="pvact"><button class="btn primary" type="button" id="pvExport">${ICON.out}Copy to device…</button></div>`;
+  $('#pvExport').onclick = () => exportMenu(f);
 }
 function atChar(c){
   const inv = c >= 128 && c !== 0x9B; const b = c & 0x7f;
-  const ch = (b >= 32 && b < 127) ? esc(String.fromCharCode(b)) : '·';
+  const ch = esc(atasciiGlyph(c));
   return inv ? `<span class="inv">${ch}</span>` : ch;
 }
 function textView(b){
@@ -567,10 +675,39 @@ function hexDump(b){
 /* ---------- Actions ---------- */
 function isTextExt(ext){ return $('#textConv').checked && ATARI_TEXT_EXT.includes(ext); }
 
-function exportFile(f){
-  const bytes = isTextExt(f.ext) ? fromAtascii(f.bytes) : f.bytes;
-  download(bytes, f.ext ? `${f.name}.${f.ext}` : f.name);
-  toast(`Copied ${f.name}.${f.ext} to your Downloads folder`);
+function exportOptions(f){
+  const info = describe(f.bytes), base = f.name, orig = f.ext ? `${f.name}.${f.ext}` : f.name;
+  const enc = s => new TextEncoder().encode(s);
+  const opts = [];
+  if (info.type === 'basic' && info.lines){
+    const txt = info.lines.map(l => atasciiToText(l.bytes)).join('\n') + '\n';
+    opts.push({ label:'Program listing (.txt)', note:'Readable text you can open in Notes, Pages or any editor', name:`${base}.txt`, data:() => enc(txt), type:'text/plain' });
+    opts.push({ label:'Atari listing (.LST)', note:'ATASCII text the Atari can load back with ENTER "D:…"', name:`${base}.LST`, data:() => { const out = []; info.lines.forEach(l => { out.push(...l.bytes, 0x9B); }); return new Uint8Array(out); } });
+  }
+  if (info.type === 'text') opts.push({ label:'Plain text (.txt)', note:'Line endings and Atari graphics characters converted', name:`${base}.txt`, data:() => enc(atasciiToText(f.bytes)), type:'text/plain' });
+  if (info.type === 'bin'){
+    opts.push({ label:'Executable (.XEX)', note:'Runs in Altirra and on SDrive-MAX', name:`${base}.XEX`, data:() => f.bytes });
+  }
+  opts.push({ label:'Hex dump (.txt)', note:'Every byte with its ATASCII character', name:`${base}-hex.txt`, data:() => enc(hexText(f.bytes)), type:'text/plain' });
+  opts.push({ label:'Original file', note:'Exact bytes as stored on the disk', name: orig, data:() => f.bytes });
+  return opts;
+}
+function exportMenu(f){
+  const opts = exportOptions(f);
+  modal({ title:`Copy ${f.name}.${f.ext} to this device`, cancel:'Cancel', ok:null,
+    html:`<div class="opts">${opts.map((o, i) => `<button class="opt" type="button" data-o="${i}"><b>${esc(o.label)}</b><span>${esc(o.note)}</span><code>${esc(o.name)}</code></button>`).join('')}</div>`,
+    onOpen: sc => sc.querySelector('.opts').addEventListener('click', e => {
+      const b = e.target.closest('[data-o]'); if (!b) return; const o = opts[+b.dataset.o];
+      download(o.data(), o.name, o.type); sc.remove(); toast(`Saved ${o.name} to Downloads`);
+    }) });
+}
+function hexText(b){
+  let out = '';
+  for (let r = 0; r < b.length; r += 16){
+    const row = b.subarray(r, r + 16);
+    out += r.toString(16).toUpperCase().padStart(4, '0') + '  ' + [...row].map(x => x.toString(16).toUpperCase().padStart(2, '0')).join(' ').padEnd(48) + ' ' + [...row].map(atasciiGlyph).join('') + '\n';
+  }
+  return out;
 }
 
 async function addFiles(list){
@@ -628,6 +765,7 @@ function makeSample(){
   d.addFile('HELLO', 'LST', enc('10 PRINT "HELLO FROM THE 800XL"\n20 GOTO 10\n'));
   const bin = [0xFF,0xFF,0x00,0x06,0x0B,0x06, 0xA9,0x0E,0x8D,0xC6,0x02,0x60, 0,0,0,0,0,0, 0xE0,0x02,0xE1,0x02,0x00,0x06];
   d.addFile('COLOR', 'COM', new Uint8Array(bin));
+  d.addFile('CIRCLES', 'BAS', new Uint8Array([0,0,0,1,1,1,2,1,10,1,182,1,188,1,210,0,0,0,0,0,0,0,0,0,10,0,32,32,0,83,65,77,80,76,69,32,84,85,82,66,79,45,66,65,83,73,67,32,80,82,79,71,82,65,77,155,20,0,31,21,43,14,64,7,0,0,0,0,37,14,64,22,0,0,0,0,20,31,3,14,64,1,0,0,0,0,22,30,0,31,31,8,128,45,14,64,16,0,0,0,0,25,14,64,64,0,0,0,0,26,14,64,16,0,0,0,0,22,40,0,23,23,98,14,64,128,0,0,0,0,18,14,64,72,0,0,0,0,18,128,22,50,0,7,7,9,128,22,60,0,27,6,60,20,27,61,84,58,14,0,0,0,0,0,0,44,34,14,0,0,0,0,0,0,22,70,0,21,13,43,14,0,0,0,0,0,0,20,21,32,15,3,66,89,69,22,0,128,6,6,52,22]));
   return d;
 }
 
@@ -646,13 +784,14 @@ $('#rows').addEventListener('click', e => {
   const f = st.files.find(x => x.i === +tr.dataset.i); const btn = e.target.closest('button');
   if (btn){
     const a = btn.dataset.a;
-    if (a === 'out') exportFile(f);
+    if (a === 'out') exportMenu(f);
     else if (a === 'ren') renameFile(f);
     else if (a === 'lock'){ st.disk.toggleLock(f); setDirty(true); refresh(); }
     else if (a === 'del') deleteFile(f);
     return;
   }
   st.sel = st.sel === f.i ? null : f.i; renderRows(); renderMap(); renderPreview();
+  if (st.sel != null && matchMedia('(max-width: 900px)').matches) $('#pvPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 $('#map').addEventListener('pointerover', e => { const b = e.target.closest('b'); if (b) readout(+b.dataset.s); });
 $('#map').addEventListener('click', e => {
