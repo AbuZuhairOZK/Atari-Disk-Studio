@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ATR Disk Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: app bar on top; file table on the left, capacity + sector map + preview on the right; stacks on narrow screens */
+:root{
+  --bg:#e4e6ea; --panel:#f7f8fa; --sunk:#eceef2; --ink:#1a1e27; --muted:#5b6474; --line:#cbd0d9;
+  --accent:#2747a0; --accent-ink:#ffffff; --screen:#1d3c8f; --screen-ink:#a9c0ff;
+  --danger:#b3263b; --ok:#1f8a62; --sys:#d08a26; --dir:#c95b2e; --orphan:#8d95a3; --cell:#d7dbe2;
+  --display:"Saira Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12141a; --panel:#1a1d25; --sunk:#151820; --ink:#e4e7ee; --muted:#97a0b0; --line:#2c313c;
+  --accent:#7e9bff; --accent-ink:#0d1330; --screen:#16306f; --screen-ink:#b3c6ff;
+  --danger:#ff6b7f; --ok:#4cc79a; --sys:#e4a447; --dir:#e57a4c; --orphan:#6b7383; --cell:#252a35; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12141a; --panel:#1a1d25; --sunk:#151820; --ink:#e4e7ee; --muted:#97a0b0; --line:#2c313c;
+  --accent:#7e9bff; --accent-ink:#0d1330; --screen:#16306f; --screen-ink:#b3c6ff;
+  --danger:#ff6b7f; --ok:#4cc79a; --sys:#e4a447; --dir:#e57a4c; --orphan:#6b7383; --cell:#252a35; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--body);min-height:100vh}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* App bar */
+.bar{position:sticky;top:0;z-index:5;background:var(--screen);color:#fff;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+.bar-in{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.02em}
+.brand svg{flex:none}
+.diskname{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 220px;color:var(--screen-ink);font-family:var(--mono);font-size:13px}
+.diskname span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dirty{width:8px;height:8px;border-radius:50%;background:#ffb547;flex:none}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 13px;border-radius:7px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn svg{width:16px;height:16px;flex:none}
+.bar .btn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25);color:#fff}
+.bar .btn:hover{background:rgba(255,255,255,.16)}
+.bar .btn.primary{background:#fff;color:#1d3c8f;border-color:#fff}
+.bar .btn.primary.pulse{box-shadow:0 0 0 3px rgba(255,181,71,.7)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+/* Main layout */
+main{max-width:1280px;margin:0 auto;padding-block:20px 40px;padding-inline:16px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
+.panel h2{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0;color:var(--muted)}
+.ph{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.side{display:grid;gap:20px;min-width:0}
+.banner{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:10px 14px;border:1px dashed var(--accent);border-radius:10px;color:var(--ink);background:var(--sunk)}
+.banner b{font-family:var(--display);letter-spacing:.04em}
+
+/* Files table */
+.tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.check{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th.n,td.n{text-align:right}
+td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--sunk)}
+tbody tr.sel{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+tbody tr:last-child td{border-bottom:0}
+.fname{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-weight:500}
+.swatch{width:10px;height:10px;border-radius:2px;flex:none}
+.ext{color:var(--muted)}
+.tag{font-size:11px;font-family:var(--mono);padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.tag.warn{border-color:var(--danger);color:var(--danger)}
+.rowact{display:flex;gap:4px;justify-content:flex-end}
+.ib{width:30px;height:30px;display:inline-grid;place-items:center;border-radius:6px;border:1px solid transparent;background:none;cursor:pointer;color:var(--muted)}
+.ib:hover:not(:disabled){border-color:var(--line);color:var(--ink);background:var(--panel)}
+.ib.del:hover:not(:disabled){color:var(--danger);border-color:var(--danger)}
+.ib:disabled{opacity:.3;cursor:not-allowed}
+.ib svg{width:16px;height:16px}
+.ib.on{color:var(--sys)}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.drop{margin:14px 16px 16px;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:13px}
+body.dragging .drop{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+
+/* Capacity */
+.cap{padding:16px;display:grid;gap:14px}
+.nums{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.num .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.num .v{font-family:var(--display);font-size:30px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.num .v small{font-size:14px;font-weight:500;color:var(--muted);margin-left:4px}
+.num .s{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.meter{height:12px;border-radius:6px;background:var(--cell);overflow:hidden;display:flex}
+.meter i{display:block;height:100%}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:0}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;font-family:var(--mono);font-size:12.5px;text-align:right}
+
+/* Sector map */
+.mapbox{padding:14px 16px 16px;display:grid;gap:10px}
+.map{display:grid;grid-template-columns:repeat(40,1fr);gap:1px;background:var(--screen);padding:6px;border-radius:6px}
+.map b{display:block;aspect-ratio:1;border-radius:1px;background:var(--cell);transition:opacity .15s}
+.map b.free{background:color-mix(in srgb,var(--screen-ink) 18%,transparent)}
+.map b.na{background:transparent;outline:1px solid color-mix(in srgb,var(--screen-ink) 25%,transparent);outline-offset:-1px}
+.map.focus b:not(.hit){opacity:.22}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.readout{font-family:var(--mono);font-size:12px;color:var(--muted);min-height:1.5em}
+
+/* Preview */
+.pv{padding:14px 16px 16px;display:grid;gap:10px}
+.pv .kind{font-size:13px}
+.pv .kind b{font-family:var(--mono)}
+.screen{background:var(--screen);color:var(--screen-ink);font-family:var(--mono);font-size:12px;line-height:1.45;padding:12px;border-radius:6px;overflow:auto;max-height:340px;white-space:pre;margin:0}
+.screen .inv{background:var(--screen-ink);color:var(--screen)}
+.screen .addr{opacity:.55}
+
+/* Modal + toast */
+.scrim{position:fixed;inset:0;background:rgba(10,14,25,.5);display:grid;place-items:center;padding:16px;z-index:20}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(440px,100%);padding:20px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal h3{margin:0;font-family:var(--display);font-size:20px}
+.modal p{margin:0;color:var(--muted)}
+.modal .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.fields{display:flex;gap:10px;align-items:end}
+.fields label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.fields input{font-family:var(--mono);text-transform:uppercase;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--sunk);width:100%}
+.err{color:var(--danger);font-size:13px;min-height:1.2em}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:30;max-width:calc(100% - 32px);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="2" width="22" height="22" rx="2" fill="none" stroke="#fff" stroke-width="2"/><rect x="7" y="2" width="12" height="8" fill="#fff"/><circle cx="13" cy="17" r="3.2" fill="none" stroke="#fff" stroke-width="2"/></svg>
+      ATR Disk Studio
+    </div>
+    <div class="diskname"><i class="dirty" id="dirtyDot" hidden></i><span id="diskTitle">No disk</span></div>
+    <div class="actions">
+      <button class="btn" id="btnOpen" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>Open .ATR</button>
+      <button class="btn" id="btnNew" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New disk</button>
+      <button class="btn primary" id="btnSave" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>Save disk</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="panel" aria-labelledby="hFiles">
+    <div class="ph">
+      <h2 id="hFiles">Directory <span class="mono" id="fileCount" style="letter-spacing:0;text-transform:none"></span></h2>
+      <div class="tools">
+        <label class="check"><input type="checkbox" id="textConv" checked> Convert line endings for .TXT .LST .ASM</label>
+        <button class="btn primary" id="btnAdd" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Add from Mac</button>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>File</th><th class="n">Sectors</th><th class="n">Bytes</th><th class="n">Start</th><th></th><th class="n" aria-label="Actions"></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="emptyMsg" hidden>This disk has no files yet. Add some from your Mac.</div>
+    <div class="drop">Drop files here to copy them onto the disk, or drop an .ATR to open it.</div>
+  </section>
+
+  <aside class="side">
+    <section class="panel" aria-labelledby="hCap">
+      <div class="ph"><h2 id="hCap">Space</h2><span class="tag" id="fmtTag">—</span></div>
+      <div class="cap">
+        <div class="nums">
+          <div class="num"><div class="k">Used</div><div class="v" id="usedS">—<small>sectors</small></div><div class="s" id="usedK"></div></div>
+          <div class="num"><div class="k">Free</div><div class="v" id="freeS">—<small>sectors</small></div><div class="s" id="freeK"></div></div>
+        </div>
+        <div class="meter" id="meter" role="img" aria-label="Disk usage"></div>
+        <dl class="facts" id="facts"></dl>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="hMap">
+      <div class="ph"><h2 id="hMap">Sector map</h2><span class="tag mono" id="mapInfo"></span></div>
+      <div class="mapbox">
+        <div class="map" id="map"></div>
+        <div class="readout" id="readout">Point at a sector to inspect it.</div>
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--sys)"></i>Boot</span>
+          <span><i class="swatch" style="background:var(--dir)"></i>VTOC + directory</span>
+          <span><i class="swatch" style="background:var(--accent)"></i>Files</span>
+          <span><i class="swatch" style="background:var(--orphan)"></i>Allocated, no file</span>
+          <span><i class="swatch" style="background:var(--cell);outline:1px solid var(--line)"></i>Free</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="hPv">
+      <div class="ph"><h2 id="hPv">Preview</h2><span class="tag mono" id="pvName">—</span></div>
+      <div class="pv" id="pv"><div class="kind" style="color:var(--muted)">Select a file to see what's inside.</div></div>
+    </section>
+  </aside>
+</main>
+
+<input type="file" id="fileAtr" accept=".atr,.ATR" hidden>
+<input type="file" id="fileAdd" multiple hidden>
+
+<script>
+// ===== CORE START (Atari DOS 2.0 / 2.5 filesystem on ATR images) =====
+const ATARI_TEXT_EXT = ['TXT','LST','ASM','DOC'];
+
+function parseATR(ab){
+  const b = new Uint8Array(ab);
+  if (b.length < 16 || b[0] !== 0x96 || b[1] !== 0x02)
+    throw new Error("This file isn't an ATR disk image (the $0296 signature is missing).");
+  const paras = b[2] | (b[3] << 8) | (b[6] << 16);
+  const secSize = b[4] | (b[5] << 8);
+  if (secSize !== 128 && secSize !== 256) throw new Error(`Sector size ${secSize} isn't supported.`);
+  let size = paras * 16;
+  if (size > b.length - 16) size = b.length - 16;
+  const header = b.slice(0, 16);
+  const data = b.slice(16, 16 + size);
+  let count, bootShort = false;
+  if (secSize === 128) count = Math.floor(size / 128);
+  else if (size >= 384 && (size - 384) % 256 === 0) { bootShort = true; count = (size - 384) / 256 + 3; }
+  else count = Math.floor(size / 256);
+  return { header, data, secSize, count, bootShort };
+}
+
+class Disk {
+  constructor(img){
+    Object.assign(this, img);
+    if (this.count === 720 && this.secSize === 128) this.kind = 'SD';
+    else if (this.count === 1040 && this.secSize === 128) this.kind = 'ED';
+    else if (this.count === 720 && this.secSize === 256) this.kind = 'DD';
+    else throw new Error(`This image has ${this.count} sectors of ${this.secSize} bytes. ATR Disk Studio handles Atari DOS 2.0/2.5 disks (720 or 1040 sectors).`);
+    if (this.sec(360)[0] !== 2)
+      throw new Error("No Atari DOS 2 directory on this disk (sector 360 has no DOS 2 VTOC). It may be a SpartaDOS or MyDOS disk, an unformatted image, or a boot-only game.");
+    this.dataPer = this.secSize - 3;
+    this.maxBit = this.kind === 'ED' ? 1023 : 719;
+  }
+  get label(){ return { SD:'Single density', ED:'Enhanced density', DD:'Double density' }[this.kind]; }
+  get dosName(){ return this.kind === 'ED' ? 'DOS 2.5' : 'DOS 2.0'; }
+  off(n){
+    if (this.secSize === 128) return (n - 1) * 128;
+    if (this.bootShort) return n <= 3 ? (n - 1) * 128 : 384 + (n - 4) * 256;
+    return (n - 1) * 256;
+  }
+  len(n){ return (this.secSize === 256 && n <= 3) ? 128 : this.secSize; }
+  sec(n){ const o = this.off(n); return this.data.subarray(o, o + this.len(n)); }
+
+  isFree(s){
+    if (s < 1 || s > this.maxBit) return false;
+    if (s < 720) return !!(this.sec(360)[10 + (s >> 3)] & (0x80 >> (s & 7)));
+    const i = s - 48; return !!(this.sec(1024)[i >> 3] & (0x80 >> (i & 7)));
+  }
+  setFree(s, free){
+    const m = (v, i, bit) => { if (free) v[i] |= bit; else v[i] &= ~bit; };
+    if (s < 720) m(this.sec(360), 10 + (s >> 3), 0x80 >> (s & 7));
+    if (this.kind === 'ED' && s >= 48) { const i = s - 48; m(this.sec(1024), i >> 3, 0x80 >> (i & 7)); }
+  }
+  countFree(){ let a = 0, b = 0; for (let s = 1; s <= this.maxBit; s++) if (this.isFree(s)) (s < 720 ? a++ : b++); return { low:a, high:b, total:a + b }; }
+  writeCounts(){
+    const f = this.countFree(); const v = this.sec(360);
+    v[3] = f.low & 255; v[4] = f.low >> 8;
+    if (this.kind === 'ED') { const v2 = this.sec(1024); v2[122] = f.high & 255; v2[123] = f.high >> 8; }
+  }
+  usable(){
+    const v = this.sec(360); const t = v[1] | (v[2] << 8);
+    const def = this.kind === 'ED' ? 1010 : 707;
+    return (t > 0 && t <= this.count) ? t : def;
+  }
+
+  entry(i){ return { s: this.sec(361 + (i >> 3)), o: (i & 7) * 16 }; }
+  readDir(){
+    const out = [];
+    for (let i = 0; i < 64; i++){
+      const { s, o } = this.entry(i); const fl = s[o];
+      if (fl === 0 || (fl & 0x80)) continue;
+      const f = { i, flags: fl, count: s[o+1] | (s[o+2] << 8), start: s[o+3] | (s[o+4] << 8),
+        name: txt(s, o+5, 8), ext: txt(s, o+13, 3), locked: !!(fl & 0x20) };
+      Object.assign(f, this.chain(f));
+      out.push(f);
+    }
+    return out;
+  }
+  chain(f){
+    const secs = [], parts = []; let s = f.start, warn = null; const seen = new Set(); const p = this.dataPer;
+    while (s > 0){
+      if (s > this.count || seen.has(s)) { warn = `Broken link at sector ${s}`; break; }
+      if (secs.length > f.count + 4) { warn = 'Chain longer than directory says'; break; }
+      const d = this.sec(s); const fno = d[p] >> 2;
+      if (fno !== f.i) { warn = `Sector ${s} is marked for file #${fno}`; break; }
+      seen.add(s); secs.push(s);
+      const n = Math.min(this.secSize === 128 ? (d[p+2] & 0x7f) : d[p+2], p);
+      parts.push(d.subarray(0, n));
+      s = ((d[p] & 3) << 8) | d[p+1];
+    }
+    if (!warn && secs.length !== f.count) warn = `Directory says ${f.count} sectors, chain has ${secs.length}`;
+    const total = parts.reduce((a, x) => a + x.length, 0);
+    const bytes = new Uint8Array(total); let k = 0; for (const x of parts){ bytes.set(x, k); k += x.length; }
+    return { secs, bytes, size: total, warn };
+  }
+  freeSlot(){ for (let i = 0; i < 64; i++){ const { s, o } = this.entry(i); if (s[o] === 0 || (s[o] & 0x80)) return i; } return -1; }
+  addFile(name, ext, bytes){
+    const slot = this.freeSlot();
+    if (slot < 0) throw new Error('The directory is full (64 files is the DOS 2 limit).');
+    const p = this.dataPer, n = Math.max(1, Math.ceil(bytes.length / p));
+    const list = []; for (let s = 1; s <= this.maxBit && list.length < n; s++) if (this.isFree(s)) list.push(s);
+    if (list.length < n) throw new Error(`${name}.${ext} needs ${n} sectors but only ${this.countFree().total} are free.`);
+    for (let k = 0; k < n; k++){
+      const d = this.sec(list[k]); d.fill(0);
+      const chunk = bytes.subarray(k * p, (k + 1) * p); d.set(chunk);
+      const next = k < n - 1 ? list[k+1] : 0;
+      d[p] = (slot << 2) | ((next >> 8) & 3); d[p+1] = next & 255; d[p+2] = chunk.length;
+      this.setFree(list[k], false);
+    }
+    const { s, o } = this.entry(slot);
+    s.fill(0, o, o + 16);
+    s[o] = (this.kind === 'ED' && list.some(x => x > 719)) ? 0x03 : 0x42;
+    s[o+1] = n & 255; s[o+2] = n >> 8; s[o+3] = list[0] & 255; s[o+4] = list[0] >> 8;
+    putName(s, o, name, ext);
+    this.writeCounts();
+    return slot;
+  }
+  deleteFile(f){
+    for (const s of f.secs) this.setFree(s, true);
+    const { s, o } = this.entry(f.i); s[o] = 0x80;
+    this.writeCounts();
+  }
+  rename(f, name, ext){ const { s, o } = this.entry(f.i); putName(s, o, name, ext); }
+  toggleLock(f){ const { s, o } = this.entry(f.i); s[o] ^= 0x20; }
+  owners(files){
+    const own = new Array(this.count + 1).fill(null);
+    for (let s = 1; s <= 3; s++) own[s] = 'boot';
+    for (let s = 360; s <= 368; s++) own[s] = s === 360 ? 'vtoc' : 'dir';
+    if (this.kind === 'ED') own[1024] = 'vtoc';
+    files.forEach(f => f.secs.forEach(s => { if (!own[s]) own[s] = f.i; }));
+    for (let s = 1; s <= this.count; s++){
+      if (own[s] !== null) continue;
+      if (s > this.maxBit) own[s] = 'na';
+      else own[s] = this.isFree(s) ? 'free' : 'orphan';
+    }
+    return own;
+  }
+  toATR(){ const out = new Uint8Array(16 + this.data.length); out.set(this.header, 0); out.set(this.data, 16); return out; }
+}
+// Format a blank single-density DOS 2.0 data disk
+Disk.blankSD = function(){
+  const header = new Uint8Array(16); const size = 720 * 128, paras = size / 16;
+  header.set([0x96, 0x02, paras & 255, (paras >> 8) & 255, 128, 0, (paras >> 16) & 255]);
+  const data = new Uint8Array(size);
+  data[(360 - 1) * 128] = 2; // mark VTOC so the constructor accepts it
+  const d = new Disk({ header, data, secSize:128, count:720, bootShort:false });
+  const v = d.sec(360); v[1] = 707 & 255; v[2] = 707 >> 8;
+  for (let s = 4; s <= 719; s++) if (s < 360 || s > 368) d.setFree(s, true);
+  d.writeCounts();
+  return d;
+};
+
+function txt(s, o, n){ let r = ''; for (let i = 0; i < n; i++) r += String.fromCharCode(s[o+i] & 0x7f); return r.trimEnd(); }
+function putName(s, o, name, ext){
+  const nm = (name + '        ').slice(0, 8), ex = (ext + '   ').slice(0, 3);
+  for (let i = 0; i < 8; i++) s[o+5+i] = nm.charCodeAt(i);
+  for (let i = 0; i < 3; i++) s[o+13+i] = ex.charCodeAt(i);
+}
+function toAtariName(fn){
+  let base = fn, ext = ''; const dot = fn.lastIndexOf('.');
+  if (dot > 0){ base = fn.slice(0, dot); ext = fn.slice(dot + 1); }
+  const clean = x => x.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  base = clean(base); ext = clean(ext).slice(0, 3);
+  if (!/^[A-Z]/.test(base)) base = 'F' + base;
+  return { name: base.slice(0, 8) || 'FILE', ext };
+}
+function validName(name, ext){ return /^[A-Z][A-Z0-9]{0,7}$/.test(name) && /^[A-Z0-9]{0,3}$/.test(ext); }
+function uniqueName(n, files){
+  const taken = new Set(files.map(f => f.name + '.' + f.ext));
+  if (!taken.has(n.name + '.' + n.ext)) return n;
+  for (let k = 1; k < 1000; k++){ const s = String(k); const nm = n.name.slice(0, 8 - s.length) + s; if (!taken.has(nm + '.' + n.ext)) return { name: nm, ext: n.ext }; }
+  return n;
+}
+function toAtascii(bytes){ // LF/CRLF -> EOL ($9B), TAB -> $7F
+  const out = []; for (let i = 0; i < bytes.length; i++){ const c = bytes[i];
+    if (c === 13){ if (bytes[i+1] === 10) continue; out.push(0x9B); }
+    else if (c === 10) out.push(0x9B); else if (c === 9) out.push(0x7F); else out.push(c); }
+  return new Uint8Array(out);
+}
+function fromAtascii(bytes){ return bytes.map(c => c === 0x9B ? 10 : c === 0x7F ? 9 : c); }
+function describe(b){
+  if (b.length >= 6 && b[0] === 0xFF && b[1] === 0xFF){
+    const segs = []; let i = 0, run = null, init = null;
+    while (i + 4 <= b.length){
+      if (b[i] === 0xFF && b[i+1] === 0xFF) i += 2;
+      if (i + 4 > b.length) break;
+      const st = b[i] | (b[i+1] << 8), en = b[i+2] | (b[i+3] << 8); i += 4;
+      if (en < st) break;
+      if (st === 0x2E0 && en >= 0x2E1) run = b[i] | (b[i+1] << 8);
+      if (st <= 0x2E2 && en >= 0x2E3) init = b[i + 0x2E2 - st] | (b[i + 0x2E3 - st] << 8);
+      segs.push([st, en]); i += en - st + 1;
+    }
+    return { type:'bin', segs, run, init };
+  }
+  if (b.length > 14 && b[0] === 0 && b[1] === 0) return { type:'basic' };
+  let printable = 0; for (const c of b.subarray(0, 2048)) if ((c >= 32 && c < 127) || c === 0x9B || c === 0x7F) printable++;
+  if (b.length && printable / Math.min(b.length, 2048) > 0.9) return { type:'text' };
+  return { type:'data' };
+}
+// ===== CORE END =====
+
+/* ---------- UI ---------- */
+const $ = s => document.querySelector(s);
+const PAL = ['#4f7cff','#2fb39a','#e0a030','#d9577a','#8a6cf0','#3fa6d6','#9bb23a','#e07a3f','#c25fc9','#5fbf5f'];
+const fileColor = i => PAL[i % PAL.length];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kb = (sectors, d) => (sectors * d.secSize / 1024).toFixed(1) + ' KB';
+const hex = (n, w) => '$' + n.toString(16).toUpperCase().padStart(w, '0');
+const st = { disk:null, files:[], own:[], sel:null, dirty:false, fname:'', sample:false };
+
+const ICON = {
+  out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>',
+  ren:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+  unlock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>',
+  del:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
+};
+
+function toast(msg){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), 3200); }
+
+function modal({ title, text, html = '', ok = 'OK', danger = false, cancel = 'Cancel', onOk }){
+  const sc = document.createElement('div'); sc.className = 'scrim';
+  sc.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h3>${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}${html}<div class="err" id="mErr"></div><div class="row">${cancel ? `<button class="btn" data-x type="button">${esc(cancel)}</button>` : ''}<button class="btn ${danger ? 'danger' : 'primary'}" data-ok type="button">${esc(ok)}</button></div></div>`;
+  const close = () => { sc.remove(); document.removeEventListener('keydown', key); };
+  const go = () => { if (!onOk) return close(); const r = onOk(sc); if (r !== false) close(); };
+  const key = e => { if (e.key === 'Escape') close(); if (e.key === 'Enter') go(); };
+  sc.addEventListener('click', e => { if (e.target === sc || e.target.closest('[data-x]')) close(); if (e.target.closest('[data-ok]')) go(); });
+  document.addEventListener('keydown', key);
+  document.body.append(sc);
+  (sc.querySelector('input') || sc.querySelector('[data-ok]')).focus();
+}
+
+function download(bytes, name, type = 'application/octet-stream'){
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function setDirty(v){ st.dirty = v; $('#dirtyDot').hidden = !v; $('#btnSave').classList.toggle('pulse', v); }
+
+function load(disk, fname, sample = false){
+  st.disk = disk; st.fname = fname; st.sample = sample; st.sel = null; setDirty(false);
+  const bn = $('#banner');
+  if (sample){ bn.hidden = false; bn.innerHTML = `<b>SAMPLE DISK</b><span>These three files are examples so you can try things out. Open one of your own .ATR images to begin.</span>`; }
+  else bn.hidden = true;
+  refresh();
+}
+
+function refresh(){
+  const d = st.disk; if (!d) return;
+  st.files = d.readDir(); st.own = d.owners(st.files);
+  if (st.sel != null && !st.files.some(f => f.i === st.sel)) st.sel = null;
+  $('#diskTitle').textContent = st.fname;
+  $('#btnSave').disabled = false; $('#btnAdd').disabled = false;
+  $('#fileCount').textContent = `· ${st.files.length} of 64`;
+  renderRows(); renderCap(); renderMap(); renderPreview();
+}
+
+function renderRows(){
+  const tb = $('#rows'); $('#emptyMsg').hidden = st.files.length > 0;
+  tb.innerHTML = st.files.map(f => {
+    const tags = [f.locked ? '<span class="tag">LOCKED</span>' : '', f.warn ? `<span class="tag warn" title="${esc(f.warn)}">CHECK</span>` : ''].join(' ');
+    return `<tr data-i="${f.i}" class="${f.i === st.sel ? 'sel' : ''}">
+      <td><div class="fname"><i class="swatch" style="background:${fileColor(f.i)}"></i>${esc(f.name)}<span class="ext">.${esc(f.ext)}</span></div></td>
+      <td class="n mono">${f.count}</td><td class="n mono">${f.size.toLocaleString()}</td><td class="n mono">${f.start}</td>
+      <td>${tags}</td>
+      <td class="n"><div class="rowact">
+        <button class="ib" data-a="out" title="Copy to Mac" aria-label="Copy ${esc(f.name)} to Mac">${ICON.out}</button>
+        <button class="ib" data-a="ren" title="Rename" aria-label="Rename" ${f.locked ? 'disabled' : ''}>${ICON.ren}</button>
+        <button class="ib ${f.locked ? 'on' : ''}" data-a="lock" title="${f.locked ? 'Unlock' : 'Lock'}" aria-label="${f.locked ? 'Unlock' : 'Lock'}">${f.locked ? ICON.lock : ICON.unlock}</button>
+        <button class="ib del" data-a="del" title="${f.locked ? 'Unlock to delete' : 'Delete'}" aria-label="Delete" ${f.locked ? 'disabled' : ''}>${ICON.del}</button>
+      </div></td></tr>`;
+  }).join('');
+}
+
+function renderCap(){
+  const d = st.disk, free = d.countFree().total, usable = d.usable(), used = Math.max(0, usable - free);
+  $('#usedS').innerHTML = `${used}<small>sectors</small>`; $('#usedK').textContent = kb(used, d);
+  $('#freeS').innerHTML = `${free}<small>sectors</small>`; $('#freeK').textContent = kb(free, d);
+  $('#fmtTag').textContent = `${d.dosName} · ${d.kind}`;
+  // meter: one band per file, then system/orphan, then free
+  const bands = st.files.map(f => [f.count, fileColor(f.i), `${f.name}.${f.ext}`]);
+  const fileSecs = st.files.reduce((a, f) => a + f.count, 0);
+  if (used - fileSecs > 0) bands.push([used - fileSecs, 'var(--orphan)', 'Allocated, no file']);
+  $('#meter').innerHTML = bands.map(([n, c, t]) => `<i style="width:${n / usable * 100}%;background:${c}" title="${esc(t)}: ${n} sectors"></i>`).join('');
+  const dataBytes = free * d.dataPer;
+  $('#facts').innerHTML = [
+    ['Format', `${d.label}`], ['Sectors', `${d.count} × ${d.secSize} bytes`], ['Image size', kb(d.count, d)],
+    ['Usable by DOS', `${usable} sectors · ${kb(usable, d)}`], ['Room for file data', `${dataBytes.toLocaleString()} bytes`],
+    ['Directory', `${st.files.length} of 64 entries`]
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+
+const OWN_LABEL = { boot:'Boot sector', vtoc:'VTOC (free-space table)', dir:'Directory', free:'Free', orphan:'Allocated but no file uses it', na:'Not used by DOS' };
+function renderMap(){
+  const d = st.disk, map = $('#map'), own = st.own; let h = '';
+  for (let s = 1; s <= d.count; s++){
+    const o = own[s]; let cls = '', bg = '';
+    if (o === 'free') cls = 'free'; else if (o === 'na') cls = 'na';
+    else if (o === 'boot') bg = 'var(--sys)'; else if (o === 'vtoc' || o === 'dir') bg = 'var(--dir)';
+    else if (o === 'orphan') bg = 'var(--orphan)'; else bg = fileColor(o);
+    if (st.sel != null && o === st.sel) cls += ' hit';
+    h += `<b data-s="${s}" class="${cls}"${bg ? ` style="background:${bg}"` : ''}></b>`;
+  }
+  map.innerHTML = h; map.classList.toggle('focus', st.sel != null);
+  $('#mapInfo').textContent = `1–${d.count}`;
+}
+function readout(s){
+  const o = st.own[s]; let t;
+  if (typeof o === 'number'){ const f = st.files.find(x => x.i === o); t = `${f.name}.${f.ext} · block ${f.secs.indexOf(s) + 1} of ${f.secs.length}`; }
+  else t = OWN_LABEL[o];
+  $('#readout').textContent = `Sector ${s} · ${t}`;
+}
+
+function renderPreview(){
+  const pv = $('#pv'); const f = st.files.find(x => x.i === st.sel);
+  if (!f){ $('#pvName').textContent = '—'; pv.innerHTML = `<div class="kind" style="color:var(--muted)">Select a file to see what's inside.</div>`; return; }
+  $('#pvName').textContent = `${f.name}.${f.ext}`;
+  const info = describe(f.bytes); let head = '', body = '';
+  if (info.type === 'bin'){
+    head = `<b>Binary load file</b> · ${info.segs.length} segment${info.segs.length === 1 ? '' : 's'}` + (info.run != null ? ` · runs at <b>${hex(info.run, 4)}</b>` : '') + (info.init != null ? ` · init <b>${hex(info.init, 4)}</b>` : '');
+    body = `<pre class="screen">${info.segs.map(([a, b]) => `${hex(a, 4)}–${hex(b, 4)}  ${String(b - a + 1).padStart(5)} bytes`).join('\n')}</pre>` + hexDump(f.bytes);
+  } else if (info.type === 'basic'){
+    head = `<b>Tokenized BASIC program</b> · SAVEd from Atari BASIC or Turbo-BASIC XL`; body = hexDump(f.bytes);
+  } else if (info.type === 'text'){
+    head = `<b>ATASCII text</b> · ${f.bytes.filter(c => c === 0x9B).length} lines`; body = textView(f.bytes);
+  } else { head = `<b>Data file</b>`; body = hexDump(f.bytes); }
+  const warn = f.warn ? `<div class="kind" style="color:var(--danger)">${esc(f.warn)}. DOS may report an error reading this file.</div>` : '';
+  pv.innerHTML = `<div class="kind">${head} · ${f.size.toLocaleString()} bytes in sectors ${f.secs[0] ?? '—'}…${f.secs[f.secs.length - 1] ?? ''}</div>${warn}${body}`;
+}
+function atChar(c){
+  const inv = c >= 128 && c !== 0x9B; const b = c & 0x7f;
+  const ch = (b >= 32 && b < 127) ? esc(String.fromCharCode(b)) : '·';
+  return inv ? `<span class="inv">${ch}</span>` : ch;
+}
+function textView(b){
+  const lim = b.subarray(0, 8192); let out = '';
+  for (const c of lim) out += c === 0x9B ? '\n' : c === 0x7F ? '    ' : atChar(c);
+  return `<pre class="screen">${out}${b.length > 8192 ? '\n…' : ''}</pre>`;
+}
+function hexDump(b){
+  const lim = Math.min(b.length, 1024); let out = '';
+  for (let r = 0; r < lim; r += 8){
+    const row = b.subarray(r, Math.min(r + 8, lim));
+    out += `<span class="addr">${r.toString(16).toUpperCase().padStart(4, '0')}</span>  ` +
+      [...row].map(x => x.toString(16).toUpperCase().padStart(2, '0')).join(' ').padEnd(24) + ' ' + [...row].map(atChar).join('') + '\n';
+  }
+  return `<pre class="screen">${out}${b.length > lim ? `… ${b.length - lim} more bytes` : ''}</pre>`;
+}
+
+/* ---------- Actions ---------- */
+function isTextExt(ext){ return $('#textConv').checked && ATARI_TEXT_EXT.includes(ext); }
+
+function exportFile(f){
+  const bytes = isTextExt(f.ext) ? fromAtascii(f.bytes) : f.bytes;
+  download(bytes, f.ext ? `${f.name}.${f.ext}` : f.name);
+  toast(`Copied ${f.name}.${f.ext} to your Downloads folder`);
+}
+
+async function addFiles(list){
+  if (!st.disk) return;
+  let added = 0; const problems = [];
+  for (const file of list){
+    if (/\.atr$/i.test(file.name)) { problems.push(`${file.name}: drop disk images on their own to open them`); continue; }
+    const raw = new Uint8Array(await file.arrayBuffer());
+    const n = uniqueName(toAtariName(file.name), st.disk.readDir());
+    const bytes = isTextExt(n.ext) ? toAtascii(raw) : raw;
+    try { st.disk.addFile(n.name, n.ext, bytes); added++; st.sel = null; }
+    catch (e){ problems.push(e.message); }
+  }
+  if (added){ setDirty(true); refresh(); const last = st.files[st.files.length - 1]; toast(`Added ${added} file${added === 1 ? '' : 's'} to the disk`); }
+  if (problems.length) modal({ title: added ? 'Some files were not added' : 'Nothing was added', html: `<p>${problems.map(esc).join('<br>')}</p>`, cancel: null });
+}
+
+function renameFile(f){
+  modal({ title: `Rename ${f.name}.${f.ext}`, ok: 'Rename',
+    html: `<div class="fields"><label style="flex:1">Name (8)<input id="rnN" maxlength="8" value="${esc(f.name)}" autocomplete="off" spellcheck="false"></label><label style="width:84px">Ext (3)<input id="rnE" maxlength="3" value="${esc(f.ext)}" autocomplete="off" spellcheck="false"></label></div>`,
+    onOk: sc => {
+      const n = sc.querySelector('#rnN').value.toUpperCase().trim(), e = sc.querySelector('#rnE').value.toUpperCase().trim();
+      const err = sc.querySelector('#mErr');
+      if (!validName(n, e)){ err.textContent = 'Names start with a letter and use only A–Z and 0–9.'; return false; }
+      if (st.files.some(x => x !== f && x.name === n && x.ext === e)){ err.textContent = `${n}.${e} is already on this disk.`; return false; }
+      st.disk.rename(f, n, e); setDirty(true); refresh();
+    } });
+}
+
+function deleteFile(f){
+  modal({ title: `Delete ${f.name}.${f.ext}?`, text: `This frees ${f.count} sector${f.count === 1 ? '' : 's'} (${kb(f.count, st.disk)}). The change is only written when you save the disk.`, ok: 'Delete', danger: true,
+    onOk: () => { st.disk.deleteFile(f); if (st.sel === f.i) st.sel = null; setDirty(true); refresh(); toast(`Deleted ${f.name}.${f.ext}`); } });
+}
+
+function saveDisk(){
+  const name = /\.atr$/i.test(st.fname) ? st.fname : st.fname + '.atr';
+  download(st.disk.toATR(), name);
+  setDirty(false); toast(`Saved ${name} to your Downloads folder`);
+}
+
+function guard(fn){
+  if (!st.dirty) return fn();
+  modal({ title: 'Discard unsaved changes?', text: `${st.fname} has changes that haven't been saved.`, ok: 'Discard', danger: true, onOk: fn });
+}
+
+async function openAtr(file){
+  try { const d = new Disk(parseATR(await file.arrayBuffer())); load(d, file.name); toast(`Opened ${file.name}`); }
+  catch (e){ modal({ title: `Can't open ${file.name}`, text: e.message, cancel: null }); }
+}
+
+function makeSample(){
+  const d = Disk.blankSD(); const enc = s => toAtascii(new TextEncoder().encode(s));
+  d.addFile('README', 'TXT', enc('SAMPLE DISK\nTHIS IS AN EXAMPLE DISK BUILT BY ATR DISK STUDIO.\nOPEN YOUR OWN .ATR TO EDIT IT.\n'));
+  d.addFile('HELLO', 'LST', enc('10 PRINT "HELLO FROM THE 800XL"\n20 GOTO 10\n'));
+  const bin = [0xFF,0xFF,0x00,0x06,0x0B,0x06, 0xA9,0x0E,0x8D,0xC6,0x02,0x60, 0,0,0,0,0,0, 0xE0,0x02,0xE1,0x02,0x00,0x06];
+  d.addFile('COLOR', 'COM', new Uint8Array(bin));
+  return d;
+}
+
+/* ---------- Wiring ---------- */
+$('#btnOpen').onclick = () => guard(() => $('#fileAtr').click());
+$('#fileAtr').onchange = e => { const f = e.target.files[0]; if (f) openAtr(f); e.target.value = ''; };
+$('#btnNew').onclick = () => guard(() => { load(Disk.blankSD(), 'NEWDISK.atr'); setDirty(true); toast('New single-density DOS 2.0 data disk (not bootable)'); });
+$('#btnSave').onclick = saveDisk;
+$('#btnAdd').onclick = () => $('#fileAdd').click();
+$('#fileAdd').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+$('#textConv').onchange = () => { try { localStorage.setItem('atrds.text', $('#textConv').checked ? '1' : '0'); } catch {} };
+try { const v = localStorage.getItem('atrds.text'); if (v) $('#textConv').checked = v === '1'; } catch {}
+
+$('#rows').addEventListener('click', e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const f = st.files.find(x => x.i === +tr.dataset.i); const btn = e.target.closest('button');
+  if (btn){
+    const a = btn.dataset.a;
+    if (a === 'out') exportFile(f);
+    else if (a === 'ren') renameFile(f);
+    else if (a === 'lock'){ st.disk.toggleLock(f); setDirty(true); refresh(); }
+    else if (a === 'del') deleteFile(f);
+    return;
+  }
+  st.sel = st.sel === f.i ? null : f.i; renderRows(); renderMap(); renderPreview();
+});
+$('#map').addEventListener('pointerover', e => { const b = e.target.closest('b'); if (b) readout(+b.dataset.s); });
+$('#map').addEventListener('click', e => {
+  const b = e.target.closest('b'); if (!b) return; const s = +b.dataset.s; readout(s);
+  const o = st.own[s]; if (typeof o === 'number'){ st.sel = o; renderRows(); renderMap(); renderPreview(); }
+});
+
+let dragDepth = 0;
+addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+addEventListener('dragleave', () => { if (--dragDepth <= 0){ dragDepth = 0; document.body.classList.remove('dragging'); } });
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+  const files = [...e.dataTransfer.files]; if (!files.length) return;
+  if (files.length === 1 && /\.atr$/i.test(files[0].name)) guard(() => openAtr(files[0]));
+  else addFiles(files);
+});
+addEventListener('beforeunload', e => { if (st.dirty && !st.sample){ e.preventDefault(); e.returnValue = ''; } });
+
+load(makeSample(), 'SAMPLE.atr', true);
+</script>
+</body>
+</html>
