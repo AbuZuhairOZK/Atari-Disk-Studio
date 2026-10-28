@@ -28,6 +28,7 @@
   --danger:#ff6b7f; --ok:#4cc79a; --sys:#e4a447; --dir:#e57a4c; --orphan:#6b7383; --cell:#252a35; color-scheme:dark}
 
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--body);min-height:100vh}
 button,input{font:inherit;color:inherit}
@@ -55,7 +56,7 @@ button,input{font:inherit;color:inherit}
 
 /* Main layout */
 main{max-width:1280px;margin:0 auto;padding-block:20px 40px;padding-inline:16px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:20px;align-items:start}
-@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)} .side{display:contents} .pvpanel{order:2} .side>.panel:not(.pvpanel){order:3} .banner{order:0} main>.panel{order:1}}
+@media (max-width:900px){main{display:flex;flex-direction:column;align-items:stretch} main .side{display:contents} .pvpanel{order:2} .side>.panel:not(.pvpanel){order:3} .banner{order:0} main>.panel{order:1}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
 .panel h2{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0;color:var(--muted)}
 .ph{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
@@ -80,7 +81,25 @@ tbody tr:last-child td{border-bottom:0}
 .ext{color:var(--muted)}
 .tag{font-size:11px;font-family:var(--mono);padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
 .tag.warn{border-color:var(--danger);color:var(--danger)}
+.tag.boot{border-color:var(--ok);color:var(--ok)}
 .rowact{display:flex;gap:4px;justify-content:flex-end}
+th.pk,td.pk{width:36px;padding-right:0}
+.pk input{width:17px;height:17px;cursor:pointer;accent-color:var(--accent)}
+tbody tr.picked{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.selbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+.selinfo{font-weight:600;font-variant-numeric:tabular-nums}
+.selacts{display:flex;flex-wrap:wrap;gap:6px}
+.selacts .btn{padding:6px 11px}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+.selext{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink)}
+.rnprev{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.rnprev table{font-family:var(--mono);font-size:12.5px}
+.rnprev td{padding:5px 10px;border-bottom:1px solid var(--line)}
+.rnprev td.arrow{color:var(--muted);padding:5px 2px}
+.rnprev tr.bad td:last-child{color:var(--danger)}
+.rnprev tr.same td{color:var(--muted)}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.hint code{font-family:var(--mono);color:var(--ink)}
 .ib{width:30px;height:30px;display:inline-grid;place-items:center;border-radius:6px;border:1px solid transparent;background:none;cursor:pointer;color:var(--muted)}
 .ib:hover:not(:disabled){border-color:var(--line);color:var(--ink);background:var(--panel)}
 .ib.del:hover:not(:disabled){color:var(--danger);border-color:var(--danger)}
@@ -164,8 +183,9 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
     </div>
     <div class="diskname"><i class="dirty" id="dirtyDot" hidden></i><span id="diskTitle">No disk</span></div>
     <div class="actions">
-      <button class="btn" id="btnOpen" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>Open .ATR</button>
+      <button class="btn" id="btnOpen" type="button" title="Open an .ATR or .ATX disk, or an .XEX/.COM program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>Open</button>
       <button class="btn" id="btnNew" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New disk</button>
+      <button class="btn" id="btnXex" type="button" title="Make a bootable disk from an .XEX or .COM program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l12 8-12 8z"/></svg>Program to boot disk</button>
       <button class="btn primary" id="btnSave" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>Save disk</button>
     </div>
   </div>
@@ -179,17 +199,29 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
       <h2 id="hFiles">Directory <span class="mono" id="fileCount" style="letter-spacing:0;text-transform:none"></span></h2>
       <div class="tools">
         <label class="check"><input type="checkbox" id="textConv" checked> Convert line endings for text files</label>
+        <select id="selExt" class="selext" aria-label="Select files by type"><option value="">Select by type…</option></select>
         <button class="btn primary" id="btnAdd" type="button" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Add files</button>
+      </div>
+    </div>
+    <div class="selbar" id="selbar" hidden>
+      <span class="selinfo" id="selInfo"></span>
+      <div class="selacts">
+        <button class="btn" type="button" data-b="ren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Rename…</button>
+        <button class="btn" type="button" data-b="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Lock</button>
+        <button class="btn" type="button" data-b="unlock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>Unlock</button>
+        <button class="btn" type="button" data-b="out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>Copy to device</button>
+        <button class="btn danger" type="button" data-b="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</button>
+        <button class="btn ghost" type="button" data-b="clear">Clear</button>
       </div>
     </div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>File</th><th class="n">Sectors</th><th class="n">Bytes</th><th class="n">Start</th><th></th><th class="n" aria-label="Actions"></th></tr></thead>
+        <thead><tr><th class="pk"><input type="checkbox" id="selAll" aria-label="Select all files"></th><th>File</th><th class="n">Sectors</th><th class="n">Bytes</th><th class="n">Start</th><th></th><th class="n" aria-label="Actions"></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
     <div class="empty" id="emptyMsg" hidden>This disk has no files yet. Tap Add files to copy some onto it.</div>
-    <div class="drop">Drop files here to copy them onto the disk, or drop an .ATR to open it.</div>
+    <div class="drop">Drop files here to copy them onto the disk, drop an .ATR or .ATX to open it, or drop an .XEX or .COM program to make a boot disk.</div>
   </section>
 
   <aside class="side">
@@ -229,6 +261,7 @@ body.dragging .drop{border-color:var(--accent);color:var(--accent);background:co
 
 <input type="file" id="fileAtr" hidden>
 <input type="file" id="fileAdd" multiple hidden>
+<input type="file" id="fileXex" hidden>
 
 <script>
 // ===== CORE START (Atari DOS 2.0 / 2.5 filesystem on ATR images) =====
@@ -357,7 +390,8 @@ class Disk {
   toggleLock(f){ const { s, o } = this.entry(f.i); s[o] ^= 0x20; }
   owners(files){
     const own = new Array(this.count + 1).fill(null);
-    for (let s = 1; s <= 3; s++) own[s] = 'boot';
+    const nb = Math.min(4, Math.max(3, this.data[1] || 3));
+    for (let s = 1; s <= nb; s++) if (s <= 3 || (nb === 4 && hasXexLoader(this))) own[s] = 'boot';
     for (let s = 360; s <= 368; s++) own[s] = s === 360 ? 'vtoc' : 'dir';
     if (this.kind === 'ED') own[1024] = 'vtoc';
     files.forEach(f => f.secs.forEach(s => { if (!own[s]) own[s] = f.i; }));
@@ -521,6 +555,153 @@ function detokenize(b){
   }
   return { lines, turbo, vars: names.length };
 }
+
+/* ---- Bootable disk from an XEX ----
+   Sectors 1-4 hold a 6502 boot loader (source: loader.s in the repository) that loads
+   the FIRST file in the DOS 2 directory as a binary load file, runs INITAD after each
+   segment and jumps to RUNAD. The disk stays a normal DOS 2 disk you can edit. */
+const XEX_LOADER_B64 = 'AAQABwwIrQHTCQKNAdOpAY34A63wv0n/jfC/zfC/0AqpwIVqIH4ITFwHIH4IqQuNQgOppo1EA6kIjUUDqUCNSAOpAI1JA6IAIFbkqf+N/AKt/ALJ//D5qf+N/AKpaY0KA6kBjQsDIF8IrQAJ8AIQA0wNCK0DCY3pCK0ECY3qCKkAjeACjeECIBgIsGmN0gcgGAiwYY3TBy3SB8n/8OkgGAiwao3tCCAYCLBije4Ire8I0A/u7wit0geN8Ait0weN8QipDI3iAqkIjeMCIBgIsDyN//+t0gfN7QjQCK3TB83uCPAL7tIH0OPu0wdMzAcgCQhMhwet4QLQDK3wCI3gAq3xCI3hAmzgAmziAmCpNI3GAo3IAkwVCK7rCOzsCJA1rekIDeoI8DWt6QiNCgOt6giNCwMgXwitfwkpf43sCK19CSkDjeoIrX4JjekIqQCN6whMGAi9AAnu6wgYYDhgqTGNAAOpAY0BA6lSjQIDqQCNBAOpCY0FAyBT5DCQYKIAqQyNQgMgVuSiAKkDjUIDqeaNRAOpCI1FA6kMjUoDqQCNSwNMVuSbQ0FSVFJJREdFIEZPVU5ELiBJRiBUSElTIENSQVNIRVMsm1JFTU9WRSBJVC4gQU5ZIEtFWSBUTyBHTyBPTi6bRTqbAAAAAAAAAAAAQVRSRFMtWEVYAAAAAAA=';
+const XEX_LOADER = Uint8Array.from(atob(XEX_LOADER_B64), c => c.charCodeAt(0));
+const LOADER_LO = 0x0700, LOADER_HI = 0x097F;
+function hasXexLoader(d){ const s = new TextDecoder('latin1').decode(d.data.subarray(0, 512)); return s.includes('ATRDS-XEX'); }
+function xexSegments(b){
+  const segs = []; let i = 0;
+  while (i + 4 <= b.length){
+    if (b[i] === 0xFF && b[i+1] === 0xFF){ i += 2; continue; }
+    const st = b[i] | (b[i+1] << 8), en = b[i+2] | (b[i+3] << 8); i += 4;
+    if (en < st || i + (en - st + 1) > b.length) return { segs, bad: true };
+    segs.push([st, en]); i += en - st + 1;
+  }
+  return { segs, bad: i !== b.length };
+}
+Disk.blankED = function(){
+  const header = new Uint8Array(16); const size = 1040 * 128, paras = size / 16;
+  header.set([0x96, 0x02, paras & 255, (paras >> 8) & 255, 128, 0, (paras >> 16) & 255]);
+  const data = new Uint8Array(size); data[(360 - 1) * 128] = 2;
+  const d = new Disk({ header, data, secSize:128, count:1040, bootShort:false });
+  const v = d.sec(360); v[1] = 1010 & 255; v[2] = 1010 >> 8;
+  for (let s = 4; s <= 1023; s++) if ((s < 360 || s > 368) && s !== 720) d.setFree(s, true);
+  d.writeCounts();
+  return d;
+};
+Disk.bootableFromXex = function(bytes, name, ext){
+  if (bytes.length < 6 || bytes[0] !== 0xFF || bytes[1] !== 0xFF)
+    throw new Error("This file isn't an Atari binary program. Atari programs (.XEX, .COM) start with the bytes FF FF.");
+  const { segs, bad } = xexSegments(bytes);
+  if (!segs.length) throw new Error("No program segments were found in this file.");
+  const clash = segs.find(([a, b]) => a <= LOADER_HI && b >= LOADER_LO);
+  if (clash) throw new Error(`This program loads into memory at $${clash[0].toString(16).toUpperCase().padStart(4,'0')}–$${clash[1].toString(16).toUpperCase().padStart(4,'0')}, which overlaps the boot loader at $0700–$097F. It needs to be run from a DOS disk instead.`);
+  const need = Math.ceil(bytes.length / 125);
+  let d;
+  if (need <= 706) d = Disk.blankSD();
+  else if (need <= 1009) d = Disk.blankED();
+  else throw new Error(`At ${Math.round(bytes.length / 1024)} KB this program is too big for a DOS 2.5 disk (126 KB at most).`);
+  d.data.set(XEX_LOADER, 0);          // sectors 1-4
+  d.setFree(4, false); d.writeCounts(); // keep DOS away from the loader's 4th sector
+  d.addFile(name, ext || 'XEX', bytes);
+  return { disk: d, segs, warn: bad ? 'The file has extra bytes after its last segment; they will be ignored.' : null };
+};
+
+/* ---- ATX (copy-protected disk copy) -> ATR ----
+   Layout per FujiNet's diskTypeAtx (a8preservation.com ATX guide). For each sector the
+   first clean copy wins; protection marks (missing, bad CRC, weak bits, duplicates,
+   deleted, long sectors) are counted so the user knows what the ATR cannot carry. */
+function atxToAtr(b){
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (b.length < 48 || String.fromCharCode(b[0], b[1], b[2], b[3]) !== 'AT8X') throw new Error("This isn't an ATX disk image (the AT8X signature is missing).");
+  const dens = b[18], spt = dens === 1 ? 26 : 18, ssz = dens === 2 ? 256 : 128, total = 40 * spt;
+  const best = new Array(total + 1).fill(null);
+  const rep = { missing:0, crc:0, weak:0, dupes:0, deleted:0, long:0, density: dens };
+  let off = dv.getUint32(28, true) || 48;
+  const end = Math.min(dv.getUint32(32, true) || b.length, b.length);
+  let tracks = 0;
+  while (off + 8 <= end){
+    const len = dv.getUint32(off, true), type = dv.getUint16(off + 4, true);
+    if (len < 8 || off + len > b.length) break;
+    if (type === 0 && len >= 32){
+      tracks++;
+      const trk = b[off + 8], cnt = dv.getUint16(off + 10, true), hsz = dv.getUint32(off + 20, true);
+      let list = [], weak = {}, ext = {}, c = off + (hsz || 32);
+      while (c + 8 <= off + len){
+        const clen = dv.getUint32(c, true); if (clen < 8) break;
+        const ct = b[c + 4], idx = b[c + 5];
+        if (ct === 0x01) for (let i = 0; i < cnt && c + 16 + i * 8 <= off + len; i++){
+          const e = c + 8 + i * 8; list.push({ num: b[e], st: b[e + 1], start: dv.getUint32(e + 4, true) });
+        }
+        else if (ct === 0x10) weak[idx] = true;
+        else if (ct === 0x11) ext[idx] = true;
+        c += clen;
+      }
+      list.forEach((sx, i) => {
+        if (sx.num < 1 || sx.num > spt || trk >= 40) return;
+        const g = trk * spt + sx.num;
+        const has = !(sx.st & 0x10) && off + sx.start + ssz <= b.length;
+        const good = has && !(sx.st & 0x2C) && !weak[i] && !ext[i];
+        const cand = { data: has ? b.subarray(off + sx.start, off + sx.start + ssz) : null, good, st: sx.st, weak: !!weak[i], long: !!ext[i] };
+        if (!best[g]) best[g] = cand;
+        else { rep.dupes++; if ((!best[g].good && cand.good) || (!best[g].data && cand.data)) best[g] = cand; }
+      });
+    }
+    off += len;
+  }
+  if (!tracks) throw new Error('No tracks were found in this ATX image.');
+  // ATR: double density keeps the first 3 sectors at 128 bytes
+  const size = dens === 2 ? 3 * 128 + (total - 3) * 256 : total * ssz;
+  const data = new Uint8Array(size);
+  for (let g = 1; g <= total; g++){
+    const s = best[g];
+    if (!s || !s.data){ rep.missing++; continue; }
+    if (s.st & 0x08) rep.crc++; if (s.st & 0x20) rep.deleted++; if (s.weak) rep.weak++; if (s.long) rep.long++;
+    const o = dens === 2 ? (g <= 3 ? (g - 1) * 128 : 384 + (g - 4) * 256) : (g - 1) * ssz;
+    data.set(dens === 2 && g <= 3 ? s.data.subarray(0, 128) : s.data, o);
+  }
+  const paras = size / 16, header = new Uint8Array(16);
+  header.set([0x96, 0x02, paras & 255, (paras >> 8) & 255, ssz & 255, ssz >> 8, (paras >> 16) & 255]);
+  const atr = new Uint8Array(16 + size); atr.set(header); atr.set(data, 16);
+  rep.marks = rep.missing + rep.crc + rep.weak + rep.dupes + rep.deleted + rep.long;
+  rep.sectors = total; rep.sectorSize = ssz;
+  return { atr, report: rep };
+}
+/* ---- Bulk rename with Atari DOS wildcards ----
+   Pattern NAME.EXT: '*' keeps the rest of the original part, '?' keeps that one character,
+   anything else replaces. "*.TB" changes only the extension; "GAME?.*" renames keeping
+   the 5th character and the extension. A pattern without a dot keeps the extension. */
+function wildPart(orig, pat, max){
+  let out = '';
+  for (let p = 0; p < pat.length && out.length < max; p++){
+    const c = pat[p];
+    if (c === '*'){ out += orig.slice(out.length < p ? p : out.length); break; }
+    else if (c === '?'){ if (p < orig.length) out += orig[p]; }
+    else out += c;
+  }
+  return out.slice(0, max);
+}
+function applyRenamePattern(name, ext, pattern){
+  const pat = pattern.toUpperCase().replace(/\s+/g, '');
+  const dot = pat.indexOf('.');
+  const np = dot < 0 ? pat : pat.slice(0, dot), ep = dot < 0 ? '*' : pat.slice(dot + 1);
+  return { name: wildPart(name, np || '*', 8).toUpperCase(), ext: wildPart(ext, ep, 3).toUpperCase() };
+}
+/* ---- Minimal ZIP writer (stored, no compression) for multi-file export ---- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(entries){
+  const parts = [], central = []; let off = 0;
+  const u16 = v => [v & 255, (v >> 8) & 255], u32 = v => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+  for (const { name, data } of entries){
+    const nb = new TextEncoder().encode(name), crc = crc32(data);
+    const common = [...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nb.length), ...u16(0)];
+    const local = new Uint8Array([...u32(0x04034b50), ...common, ...nb]);
+    parts.push(local, data);
+    central.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off), ...nb]));
+    off += local.length + data.length;
+  }
+  const cdSize = central.reduce((a, c) => a + c.length, 0);
+  const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(entries.length), ...u16(entries.length), ...u32(cdSize), ...u32(off), ...u16(0)]);
+  const all = [...parts, ...central, end], out = new Uint8Array(all.reduce((a, c) => a + c.length, 0));
+  let k = 0; for (const c of all){ out.set(c, k); k += c.length; }
+  return out;
+}
 // ===== CORE END =====
 
 /* ---------- UI ---------- */
@@ -530,7 +711,7 @@ const fileColor = i => PAL[i % PAL.length];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const kb = (sectors, d) => (sectors * d.secSize / 1024).toFixed(1) + ' KB';
 const hex = (n, w) => '$' + n.toString(16).toUpperCase().padStart(w, '0');
-const st = { disk:null, files:[], own:[], sel:null, dirty:false, fname:'', sample:false };
+const st = { disk:null, files:[], own:[], sel:null, dirty:false, fname:'', sample:false, picked:new Set(), lastPick:null };
 
 const ICON = {
   out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>',
@@ -564,7 +745,7 @@ function download(bytes, name, type = 'application/octet-stream'){
 function setDirty(v){ st.dirty = v; $('#dirtyDot').hidden = !v; $('#btnSave').classList.toggle('pulse', v); }
 
 function load(disk, fname, sample = false){
-  st.disk = disk; st.fname = fname; st.sample = sample; st.sel = null; setDirty(false);
+  st.disk = disk; st.fname = fname; st.sample = sample; st.sel = null; st.picked = new Set(); st.lastPick = null; setDirty(false);
   const bn = $('#banner');
   if (sample){ bn.hidden = false; bn.innerHTML = `<b>SAMPLE DISK</b><span>These files are examples so you can try things out. Open one of your own .ATR images to begin.</span>`; }
   else bn.hidden = true;
@@ -573,8 +754,9 @@ function load(disk, fname, sample = false){
 
 function refresh(){
   const d = st.disk; if (!d) return;
-  st.files = d.readDir(); st.own = d.owners(st.files);
+  st.files = d.readDir(); st.own = d.owners(st.files); st.boot = hasXexLoader(d);
   if (st.sel != null && !st.files.some(f => f.i === st.sel)) st.sel = null;
+  for (const i of [...st.picked]) if (!st.files.some(f => f.i === i)) st.picked.delete(i);
   $('#diskTitle').textContent = st.fname;
   $('#btnSave').disabled = false; $('#btnAdd').disabled = false;
   $('#fileCount').textContent = `· ${st.files.length} of 64`;
@@ -584,8 +766,10 @@ function refresh(){
 function renderRows(){
   const tb = $('#rows'); $('#emptyMsg').hidden = st.files.length > 0;
   tb.innerHTML = st.files.map(f => {
-    const tags = [f.locked ? '<span class="tag">LOCKED</span>' : '', f.warn ? `<span class="tag warn" title="${esc(f.warn)}">CHECK</span>` : ''].join(' ');
-    return `<tr data-i="${f.i}" class="${f.i === st.sel ? 'sel' : ''}">
+    const tags = [st.boot && f.i === 0 ? '<span class="tag boot">RUNS AT BOOT</span>' : '', f.locked ? '<span class="tag">LOCKED</span>' : '', f.warn ? `<span class="tag warn" title="${esc(f.warn)}">CHECK</span>` : ''].join(' ');
+    const pk = st.picked.has(f.i);
+    return `<tr data-i="${f.i}" class="${f.i === st.sel ? 'sel' : ''}${pk ? ' picked' : ''}">
+      <td class="pk"><input type="checkbox" class="pick" ${pk ? 'checked' : ''} aria-label="Select ${esc(f.name)}.${esc(f.ext)}"></td>
       <td><div class="fname"><i class="swatch" style="background:${fileColor(f.i)}"></i>${esc(f.name)}<span class="ext">.${esc(f.ext)}</span></div></td>
       <td class="n mono">${f.count}</td><td class="n mono">${f.size.toLocaleString()}</td><td class="n mono">${f.start}</td>
       <td>${tags}</td>
@@ -596,6 +780,22 @@ function renderRows(){
         <button class="ib del" data-a="del" title="${f.locked ? 'Unlock to delete' : 'Delete'}" aria-label="Delete" ${f.locked ? 'disabled' : ''}>${ICON.del}</button>
       </div></td></tr>`;
   }).join('');
+  renderSelection();
+}
+function pickedFiles(){ return st.files.filter(f => st.picked.has(f.i)); }
+function renderSelection(){
+  const fs = pickedFiles(), n = fs.length;
+  $('#selbar').hidden = n === 0;
+  const all = $('#selAll'); all.checked = n > 0 && n === st.files.length; all.indeterminate = n > 0 && n < st.files.length;
+  if (n){
+    const secs = fs.reduce((a, f) => a + f.count, 0), locked = fs.filter(f => f.locked).length;
+    $('#selInfo').textContent = `${n} selected · ${secs} sector${secs === 1 ? '' : 's'}` + (locked ? ` · ${locked} locked` : '');
+  }
+  // select-by-type menu
+  const counts = {}; st.files.forEach(f => { const k = f.ext || '(none)'; counts[k] = (counts[k] || 0) + 1; });
+  const sel = $('#selExt');
+  sel.innerHTML = `<option value="">Select by type…</option>` + Object.keys(counts).sort().map(k => `<option value="${esc(k)}">.${esc(k)} (${counts[k]})</option>`).join('');
+  sel.hidden = st.files.length < 2;
 }
 
 function renderCap(){
@@ -612,7 +812,8 @@ function renderCap(){
   $('#facts').innerHTML = [
     ['Format', `${d.label}`], ['Sectors', `${d.count} × ${d.secSize} bytes`], ['Image size', kb(d.count, d)],
     ['Usable by DOS', `${usable} sectors · ${kb(usable, d)}`], ['Room for file data', `${dataBytes.toLocaleString()} bytes`],
-    ['Directory', `${st.files.length} of 64 entries`]
+    ['Directory', `${st.files.length} of 64 entries`],
+    ['Boots', hasXexLoader(d) ? (st.files.some(f => f.i === 0) ? `Straight into ${st.files.find(f => f.i === 0).name}.${st.files.find(f => f.i === 0).ext}` : 'Program loader, but no first file') : d.data.subarray(0, 384).every(x => x === 0) ? "Doesn't boot (no boot code)" : 'Its own boot code, usually DOS']
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
 }
 
@@ -718,6 +919,7 @@ function exportOptions(f){
   if (info.type === 'text' || modeFor(f) === 'text') opts.unshift(textOpt);
   if (info.type === 'bin'){
     opts.push({ label:'Executable (.XEX)', note:'Runs in Altirra and on SDrive-MAX', name:`${base}.XEX`, data:() => f.bytes });
+    opts.push({ label:'Bootable disk (.atr)', note:'A disk of its own that boots straight into this program', name:`${base}.atr`, data:() => Disk.bootableFromXex(f.bytes, f.name, f.ext || 'XEX').disk.toATR() });
   }
   if (!opts.includes(textOpt)) opts.push(textOpt);
   opts.push({ label:'Hex dump (.txt)', note:'Every byte with its ATASCII character', name:`${base}-hex.txt`, data:() => enc(hexText(f.bytes)), type:'text/plain' });
@@ -730,7 +932,8 @@ function exportMenu(f){
     html:`<div class="opts">${opts.map((o, i) => `<button class="opt" type="button" data-o="${i}"><b>${esc(o.label)}</b><span>${esc(o.note)}</span><code>${esc(o.name)}</code></button>`).join('')}</div>`,
     onOpen: sc => sc.querySelector('.opts').addEventListener('click', e => {
       const b = e.target.closest('[data-o]'); if (!b) return; const o = opts[+b.dataset.o];
-      download(o.data(), o.name, o.type); sc.remove(); toast(`Saved ${o.name} to Downloads`);
+      let data; try { data = o.data(); } catch (err){ sc.querySelector('#mErr').textContent = err.message; return; }
+      download(data, o.name, o.type); sc.remove(); toast(`Saved ${o.name} to Downloads`);
     }) });
 }
 function hexText(b){
@@ -744,10 +947,10 @@ function hexText(b){
 
 async function addFiles(list){
   if (!st.disk) return;
-  if (list.length === 1 && /\.atr$/i.test(list[0].name)) return guard(() => openAtr(list[0]));
+  if (list.length === 1 && /\.(atr|atx)$/i.test(list[0].name)) return guard(() => openAtr(list[0]));
   let added = 0; const problems = [];
   for (const file of list){
-    if (/\.atr$/i.test(file.name)) { problems.push(`${file.name} is a disk image. Use Open .ATR to open it`); continue; }
+    if (/\.(atr|atx)$/i.test(file.name)) { problems.push(`${file.name} is a disk image. Use Open to open it`); continue; }
     const raw = new Uint8Array(await file.arrayBuffer());
     const n = uniqueName(toAtariName(file.name), st.disk.readDir());
     const bytes = isTextExt(n.ext) ? toAtascii(raw) : raw;
@@ -770,8 +973,76 @@ function renameFile(f){
     } });
 }
 
+function nameList(fs){
+  const shown = fs.slice(0, 8).map(f => `${f.name}.${f.ext}`).join(', ');
+  return fs.length > 8 ? `${shown} and ${fs.length - 8} more` : shown;
+}
+function bulkDelete(){
+  const fs = pickedFiles(), ok = fs.filter(f => !f.locked), locked = fs.length - ok.length;
+  if (!ok.length) return modal({ title:'Nothing to delete', text:'All the selected files are locked. Unlock them first.', cancel:null });
+  const secs = ok.reduce((a, f) => a + f.count, 0);
+  const boot = st.boot && ok.some(f => f.i === 0) ? ' This includes the program the disk boots into.' : '';
+  modal({ title:`Delete ${ok.length} file${ok.length === 1 ? '' : 's'}?`, danger:true, ok:'Delete',
+    html:`<p>${esc(nameList(ok))}</p><p>This frees ${secs} sector${secs === 1 ? '' : 's'} (${kb(secs, st.disk)}).${boot}${locked ? ` ${locked} locked file${locked === 1 ? ' stays' : 's stay'} on the disk.` : ''} Nothing is written until you save the disk.</p>`,
+    onOk: () => { ok.forEach(f => { st.disk.deleteFile(f); st.picked.delete(f.i); if (st.sel === f.i) st.sel = null; }); setDirty(true); refresh(); toast(`Deleted ${ok.length} file${ok.length === 1 ? '' : 's'}`); } });
+}
+function bulkLock(on){
+  const fs = pickedFiles().filter(f => f.locked !== on); if (!fs.length) return toast(on ? 'Already locked' : 'Already unlocked');
+  fs.forEach(f => { const { s, o } = st.disk.entry(f.i); if (on) s[o] |= 0x20; else s[o] &= ~0x20; });
+  setDirty(true); refresh(); toast(`${on ? 'Locked' : 'Unlocked'} ${fs.length} file${fs.length === 1 ? '' : 's'}`);
+}
+function bulkExport(){
+  const fs = pickedFiles(); if (fs.length === 1) return exportMenu(fs[0]);
+  const used = new Set(), entries = fs.map(f => { let n = f.ext ? `${f.name}.${f.ext}` : f.name; while (used.has(n)) n = '_' + n; used.add(n); return { name:n, data:f.bytes }; });
+  const zname = st.fname.replace(/\.atr$/i, '') + '-files.zip';
+  download(zipStore(entries), zname, 'application/zip'); toast(`Saved ${fs.length} files in ${zname}`);
+}
+function planRename(fs, pattern){
+  const others = st.files.filter(f => !st.picked.has(f.i)).map(f => `${f.name}.${f.ext}`);
+  const taken = new Set(others), plan = [];
+  for (const f of fs){
+    const old = `${f.name}.${f.ext}`;
+    if (f.locked){ plan.push({ f, old, nw: old, err:'locked' }); continue; }
+    const r = applyRenamePattern(f.name, f.ext, pattern), nw = `${r.name}.${r.ext}`;
+    let err = null;
+    if (!validName(r.name, r.ext)) err = 'not a valid Atari name';
+    else if (taken.has(nw)) err = 'name already used';
+    plan.push({ f, old, nw, r, err }); if (!err) taken.add(nw);
+  }
+  return plan;
+}
+function bulkRename(){
+  const fs = pickedFiles(); if (!fs.length) return;
+  const exts = [...new Set(fs.map(f => f.ext))];
+  const start = exts.length === 1 ? `*.${exts[0]}` : '*.*';
+  modal({ title:`Rename ${fs.length} file${fs.length === 1 ? '' : 's'}`, ok:'Rename',
+    html:`<div class="fields"><label style="flex:1">New name pattern<input id="rnPat" value="${esc(start)}" autocomplete="off" spellcheck="false"></label></div>
+      <p class="hint"><code>*</code> keeps the rest of the old name or extension from that point, <code>?</code> keeps one character. For example, <code>*.TB</code> changes every extension to TB.</p>
+      <div class="rnprev"><table><tbody id="rnRows"></tbody></table></div>`,
+    onOpen: sc => {
+      const inp = sc.querySelector('#rnPat'), draw = () => {
+        const plan = planRename(fs, inp.value);
+        sc.querySelector('#rnRows').innerHTML = plan.map(p => `<tr class="${p.err ? 'bad' : p.nw === p.old ? 'same' : ''}"><td>${esc(p.old)}</td><td class="arrow">→</td><td>${p.err ? esc(p.err) : esc(p.nw)}</td></tr>`).join('');
+        const bad = plan.filter(p => p.err && p.err !== 'locked').length;
+        sc.querySelector('#mErr').textContent = bad ? `${bad} name${bad === 1 ? '' : 's'} can't be used. Adjust the pattern.` : '';
+      };
+      inp.addEventListener('input', draw); draw();
+      const ext = inp.value.lastIndexOf('.'); if (ext > 0){ inp.setSelectionRange(ext + 1, inp.value.length); }
+    },
+    onOk: sc => {
+      const plan = planRename(fs, sc.querySelector('#rnPat').value);
+      if (plan.some(p => p.err && p.err !== 'locked')) return false;
+      const todo = plan.filter(p => !p.err && p.nw !== p.old);
+      todo.forEach(p => st.disk.rename(p.f, p.r.name, p.r.ext));
+      if (todo.length){ setDirty(true); refresh(); }
+      const lk = plan.filter(p => p.err === 'locked').length;
+      toast(`Renamed ${todo.length} file${todo.length === 1 ? '' : 's'}` + (lk ? ` · ${lk} locked skipped` : ''));
+    } });
+}
+
 function deleteFile(f){
-  modal({ title: `Delete ${f.name}.${f.ext}?`, text: `This frees ${f.count} sector${f.count === 1 ? '' : 's'} (${kb(f.count, st.disk)}). The change is only written when you save the disk.`, ok: 'Delete', danger: true,
+  const bootNote = st.boot && f.i === 0 ? ' This is the program the disk boots into. The next file you add takes its place.' : '';
+  modal({ title: `Delete ${f.name}.${f.ext}?`, text: `This frees ${f.count} sector${f.count === 1 ? '' : 's'} (${kb(f.count, st.disk)}). The change is only written when you save the disk.${bootNote}`, ok: 'Delete', danger: true,
     onOk: () => { st.disk.deleteFile(f); if (st.sel === f.i) st.sel = null; setDirty(true); refresh(); toast(`Deleted ${f.name}.${f.ext}`); } });
 }
 
@@ -787,8 +1058,43 @@ function guard(fn){
 }
 
 async function openAtr(file){
-  try { const d = new Disk(parseATR(await file.arrayBuffer())); load(d, file.name); toast(`Opened ${file.name}`); }
+  const ab = await file.arrayBuffer(); const b = new Uint8Array(ab);
+  if (b.length >= 6 && b[0] === 0xFF && b[1] === 0xFF){
+    return modal({ title:`${file.name} is a program, not a disk`, text:'Make a bootable disk that runs it?', ok:'Make bootable disk', onOk: () => { xexToDisk(file.name, b); } });
+  }
+  if (b.length >= 4 && b[0] === 0x41 && b[1] === 0x54 && b[2] === 0x38 && b[3] === 0x58) return openAtx(file.name, b);
+  try { const d = new Disk(parseATR(ab)); load(d, file.name); toast(`Opened ${file.name}`); }
   catch (e){ modal({ title: `Can't open ${file.name}`, text: e.message, cancel: null }); }
+}
+function atxSummary(r){
+  if (!r.marks) return `<p>Every sector read cleanly, so the ATR is a complete copy.</p>`;
+  const parts = [[r.missing,'missing'],[r.crc,'damaged (bad checksum)'],[r.weak,'weak (reads differently each time)'],[r.dupes,'duplicate'],[r.deleted,'marked deleted'],[r.long,'oversized']]
+    .filter(x => x[0]).map(([n, w]) => `${n} ${w} sector${n === 1 ? '' : 's'}`);
+  return `<p>This disk carries copy-protection marks that the ATR format can't hold: ${parts.join(', ')}.</p>
+    <p>Programs that check for these usually refuse to run from the ATR. For those, keep using the ATX in Altirra.</p>`;
+}
+function openAtx(fname, b){
+  let r; try { r = atxToAtr(b); } catch (e){ return modal({ title:`Can't convert ${fname}`, text:e.message, cancel:null }); }
+  const name = fname.replace(/\.atx$/i, '') + '.atr';
+  let disk = null; try { disk = new Disk(parseATR(r.atr.buffer)); } catch {}
+  const head = `<p><b>${r.report.sectors} sectors</b> of ${r.report.sectorSize} bytes, ${['single','enhanced','double'][r.report.density] || 'single'} density.</p>` + atxSummary(r.report);
+  if (disk){
+    load(disk, name); setDirty(true);
+    modal({ title:`Converted ${fname} to ATR`, html: head + `<p>Tap <b>Save disk</b> to keep it as ${esc(name)}.</p>`, cancel:null });
+  } else {
+    modal({ title:`Converted ${fname} to ATR`, html: head + `<p>It isn't a DOS 2 disk, which is normal for games that boot on their own, so its files can't be listed here. You can still save the ATR.</p>`,
+      ok:`Save ${name}`, cancel:'Close', onOk: () => { download(r.atr, name); toast(`Saved ${name} to Downloads`); } });
+  }
+}
+function xexToDisk(fname, bytes){
+  const n = toAtariName(fname);
+  try {
+    const r = Disk.bootableFromXex(bytes, n.name, n.ext || 'XEX');
+    load(r.disk, `${n.name}.atr`); setDirty(true);
+    st.sel = st.files[0]?.i ?? null; renderRows(); renderMap(); renderPreview();
+    toast(`Bootable ${r.disk.kind === 'ED' ? 'enhanced-density ' : ''}disk ready. Tap Save disk to keep it`);
+    if (r.warn) modal({ title:'Disk made, with a note', text:r.warn, cancel:null });
+  } catch (e){ modal({ title:`Can't make a bootable disk from ${fname}`, text:e.message, cancel:null }); }
 }
 
 function makeSample(){
@@ -804,7 +1110,25 @@ function makeSample(){
 /* ---------- Wiring ---------- */
 $('#btnOpen').onclick = () => guard(() => $('#fileAtr').click());
 $('#fileAtr').onchange = e => { const f = e.target.files[0]; if (f) openAtr(f); e.target.value = ''; };
-$('#btnNew').onclick = () => guard(() => { load(Disk.blankSD(), 'NEWDISK.atr'); setDirty(true); toast('New single-density DOS 2.0 data disk (not bootable)'); });
+$('#btnNew').onclick = () => guard(() => {
+  modal({ title:'New disk', cancel:'Cancel', ok:null,
+    html:`<div class="opts">
+      <button class="opt" type="button" data-n="xex"><b>Bootable disk from a program</b><span>Pick an .XEX or .COM file. The disk boots straight into it on the Atari, the SDrive-MAX or Altirra, with no DOS needed.</span></button>
+      <button class="opt" type="button" data-n="sd"><b>Blank data disk</b><span>Single density, DOS 2.0 format. Holds files but doesn't boot on its own.</span></button></div>`,
+    onOpen: sc => sc.querySelector('.opts').addEventListener('click', e => {
+      const b = e.target.closest('[data-n]'); if (!b) return; sc.remove();
+      if (b.dataset.n === 'sd'){ load(Disk.blankSD(), 'NEWDISK.atr'); setDirty(true); toast('New single-density DOS 2.0 data disk'); }
+      else $('#fileXex').click();
+    }) });
+});
+$('#btnXex').onclick = () => guard(() => $('#fileXex').click());
+$('#fileXex').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const b = new Uint8Array(await f.arrayBuffer());
+  if (b.length >= 4 && b[0] === 0x41 && b[1] === 0x54 && b[2] === 0x38 && b[3] === 0x58) return openAtx(f.name, b);
+  if (b.length >= 16 && b[0] === 0x96 && b[1] === 0x02) return openAtr(f);
+  xexToDisk(f.name, b);
+};
 $('#btnSave').onclick = saveDisk;
 $('#btnAdd').onclick = () => $('#fileAdd').click();
 $('#fileAdd').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
@@ -814,6 +1138,15 @@ try { const v = localStorage.getItem('atrds.text'); if (v) $('#textConv').checke
 $('#rows').addEventListener('click', e => {
   const tr = e.target.closest('tr'); if (!tr) return;
   const f = st.files.find(x => x.i === +tr.dataset.i); const btn = e.target.closest('button');
+  if (e.target.closest('td.pk')){
+    const on = e.target.matches('input.pick') ? e.target.checked : !st.picked.has(f.i);
+    const order = st.files.map(x => x.i);
+    if (e.shiftKey && st.lastPick != null && order.includes(st.lastPick)){
+      const [a, b] = [order.indexOf(st.lastPick), order.indexOf(f.i)].sort((x, y) => x - y);
+      order.slice(a, b + 1).forEach(i => on ? st.picked.add(i) : st.picked.delete(i));
+    } else on ? st.picked.add(f.i) : st.picked.delete(f.i);
+    st.lastPick = f.i; renderRows(); return;
+  }
   if (btn){
     const a = btn.dataset.a;
     if (a === 'out') exportMenu(f);
@@ -824,6 +1157,18 @@ $('#rows').addEventListener('click', e => {
   }
   st.sel = st.sel === f.i ? null : f.i; renderRows(); renderMap(); renderPreview();
   if (st.sel != null && matchMedia('(max-width: 900px)').matches) $('#pvPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('#selbar').addEventListener('click', e => {
+  const b = e.target.closest('[data-b]'); if (!b) return; const a = b.dataset.b;
+  if (a === 'del') bulkDelete(); else if (a === 'ren') bulkRename(); else if (a === 'lock') bulkLock(true);
+  else if (a === 'unlock') bulkLock(false); else if (a === 'out') bulkExport();
+  else if (a === 'clear'){ st.picked.clear(); renderRows(); }
+});
+$('#selAll').addEventListener('change', e => { st.picked = e.target.checked ? new Set(st.files.map(f => f.i)) : new Set(); renderRows(); });
+$('#selExt').addEventListener('change', e => {
+  const v = e.target.value; if (!v) return;
+  st.files.forEach(f => { if ((f.ext || '(none)') === v) st.picked.add(f.i); });
+  e.target.value = ''; renderRows();
 });
 $('#map').addEventListener('pointerover', e => { const b = e.target.closest('b'); if (b) readout(+b.dataset.s); });
 $('#map').addEventListener('click', e => {
@@ -838,7 +1183,18 @@ addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
   const files = [...e.dataTransfer.files]; if (!files.length) return;
-  if (files.length === 1 && /\.atr$/i.test(files[0].name)) guard(() => openAtr(files[0]));
+  if (files.length === 1 && /\.(atr|atx)$/i.test(files[0].name)) guard(() => openAtr(files[0]));
+  else if (files.length === 1 && /\.(xex|exe|com|sys|obj|bin)$/i.test(files[0].name)){
+    const f = files[0];
+    modal({ title:`What should happen with ${f.name}?`, cancel:'Cancel', ok:null,
+      html:`<div class="opts"><button class="opt" type="button" data-d="boot"><b>Make a bootable disk from it</b><span>A new disk that boots straight into this program</span></button>
+        <button class="opt" type="button" data-d="add"><b>Add it to this disk</b><span>Copy it onto ${esc(st.fname)} as a file</span></button></div>`,
+      onOpen: sc => sc.querySelector('.opts').addEventListener('click', async ev => {
+        const b = ev.target.closest('[data-d]'); if (!b) return; sc.remove();
+        if (b.dataset.d === 'add') addFiles([f]);
+        else { const bytes = new Uint8Array(await f.arrayBuffer()); guard(() => xexToDisk(f.name, bytes)); }
+      }) });
+  }
   else addFiles(files);
 });
 addEventListener('beforeunload', e => { if (st.dirty && !st.sample){ e.preventDefault(); e.returnValue = ''; } });
